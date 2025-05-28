@@ -4,6 +4,13 @@
 namespace esphome {
 namespace bthome_tracker {
 
+class BTHomeTracker : public sensor::Sensor, public Component {
+ public:
+  void setup() override {}
+  void loop() override {}
+};
+
+
 static const char *const TAG = "bthome_tracker";
 
 void BTHomeTracker::on_ble_advertise(const esp32_ble_tracker::ESPBTDevice &x) {
@@ -24,7 +31,7 @@ void BTHomeTracker::on_ble_advertise(const esp32_ble_tracker::ESPBTDevice &x) {
     return;
   }
 
-  float temp = ((*service_data)[6] | ((*service_data)[7] << 8)) / 100.0;
+  float temp = ((*service_data)[6] | ((*service_data)[7] << 8)) / 100.0c;
   float hum = ((*service_data)[9] | ((*service_data)[10] << 8)) / 100.0;
   float volt = ((*service_data)[12] | ((*service_data)[13] << 8)) / 1000.0;
 

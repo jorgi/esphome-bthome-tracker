@@ -7,6 +7,13 @@
 namespace esphome {
 namespace bthome_tracker {
 
+class BTHomeTracker : public sensor::Sensor, public Component {
+ public:
+  void setup() override;
+  void loop() override;
+};
+
+
 struct BTHomeDevice {
   std::string mac;
   std::string name;
