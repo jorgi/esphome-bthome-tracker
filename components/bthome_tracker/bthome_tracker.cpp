@@ -74,7 +74,7 @@ void BTHomeTracker::loop() {
 
 void BTHomeTracker::publish_discovery(int i) {
   auto &d = devices_[i];
-  std::string id_base = "bthome_" + d.mac.substr(0, 6);
+  std::string id_base = "bthome_" + d.mac;
 
   mqtt_client_->publish_json("homeassistant/sensor/" + id_base + "_temperature/config", [=](JsonObject root) {
     root["name"] = id_base + " Temperature";
