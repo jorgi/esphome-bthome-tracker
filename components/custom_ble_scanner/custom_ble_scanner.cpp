@@ -90,7 +90,7 @@ void CustomBLEScanner::loop() {
   // Generic device data publishing (if still desired)
   if (millis() - last_generic_publish_time_ >= generic_publish_interval_ms_) {
     last_generic_publish_time_ = millis();
-    ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
+//    ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
 
     for (auto const& [mac_address_u64, device_info] : known_ble_devices_) {
       std::string mac_address_str = mac_address_to_string(mac_address_u64);
@@ -107,7 +107,7 @@ void CustomBLEScanner::loop() {
       serializeJson(doc, payload);
 
       mqtt::global_mqtt_client->publish(topic, payload.c_str(), payload.length(), 0, true); // Retain=true
-      ESP_LOGV(TAG, "Published generic data for %s to %s: %s", mac_address_str.c_str(), topic.c_str(), payload.c_str());
+//      ESP_LOGV(TAG, "Published generic data for %s to %s: %s", mac_address_str.c_str(), topic.c_str(), payload.c_str());
     }
   }
 
@@ -128,7 +128,7 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
 
   // This block is for logging, only triggers once per second for efficiency
   if (millis() - last_log_time_ >= 1000) {
-    ESP_LOGD(TAG, "BLE Advertisement received - MAC: %s, RSSI: %d dBm, RAW: %s",
+//    ESP_LOGD(TAG, "BLE Advertisement received - MAC: %s, RSSI: %d dBm, RAW: %s",
              device.address_str().c_str(), device.get_rssi(), raw_data_str.c_str());
     last_log_time_ = millis();
 
@@ -151,11 +151,11 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   }
 
   if (is_bthome_v2_device) {
-    ESP_LOGD(TAG, "Found BTHome v2 device %s! Processing data...", device.address_str().c_str());
+//    ESP_LOGD(TAG, "Found BTHome v2 device %s! Processing data...", device.address_str().c_str());
     return parse_bthome_v2_device(device); // This function will now manage BTHomeDevice objects
   }
 
-  ESP_LOGV(TAG, "Storing generic device %s, RSSI: %d dBm", device.address_str().c_str(), device.get_rssi());
+//  ESP_LOGV(TAG, "Storing generic device %s, RSSI: %d dBm", device.address_str().c_str(), device.get_rssi());
   BLEDeviceInfo info;
   info.last_advertisement_time = millis();
   info.last_rssi = device.get_rssi();
@@ -246,11 +246,11 @@ void CustomBLEScanner::send_all_bthome_discovery_messages() {
   ESP_LOGD(TAG, "Starting global BTHome discovery refresh for %zu devices.", bthome_devices_.size());
   for (auto const& [mac_address_u64, device_obj] : bthome_devices_) {
     // Optional: Only send discovery for devices seen recently, e.g., within the last 10 minutes (600000ms)
-    // if (millis() - device_obj->last_seen_millis_ < 600000) {
+    if (millis() - device_obj->last_seen_millis_ < 600000) {
       this->send_bthome_discovery_messages_for_device(device_obj);
-    // } else {
-    //   ESP_LOGV(TAG, "Skipping discovery for inactive BTHome device %s", mac_address_to_string(device_obj->address).c_str());
-    // }
+    } else {
+       ESP_LOGV(TAG, "Skipping discovery for inactive BTHome device %s", mac_address_to_string(device_obj->address).c_str());
+    }
   }
 }
 
@@ -336,7 +336,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_PACKET_ID: {
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
         uint8_t raw_packet_id = bthome_data[offset];
-        ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id);
+//        ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id);
         offset += 1;
         break;
       }
@@ -415,9 +415,9 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
 
   if (!state_doc.isNull() && state_doc.size() > 0) {
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
-    ESP_LOGV(TAG, "Published BTHome state for %s to %s: %s", device_mac_str.c_str(), state_topic.c_str(), state_payload.c_str());
+//    ESP_LOGV(TAG, "Published BTHome state for %s to %s: %s", device_mac_str.c_str(), state_topic.c_str(), state_payload.c_str());
   } else {
-    ESP_LOGD(TAG, "No BTHome measurements parsed for %s, skipping MQTT state publish.", device_mac_str.c_str());
+//    ESP_LOGD(TAG, "No BTHome measurements parsed for %s, skipping MQTT state publish.", device_mac_str.c_str());
   }
 
   return true;
@@ -432,21 +432,21 @@ void CustomBLEScanner::dump_config() {
     ESP_LOGCONFIG(TAG, "  Attached to ESP32 BLE Tracker");
   }
   if (this->ble_raw_data_sensor_ != nullptr) {
-      ESP_LOGCONFIG(TAG, "  BLE Raw Data Text Sensor: %s", this->ble_raw_data_sensor_->get_name().c_str());
+//      ESP_LOGCONFIG(TAG, "  BLE Raw Data Text Sensor: %s", this->ble_raw_data_sensor_->get_name().c_str());
   }
   if (this->bthome_temperature_sensor_ != nullptr) {
-      ESP_LOGCONFIG(TAG, "  BTHome Temperature Sensor: %s", this->bthome_temperature_sensor_->get_name().c_str());
+//      ESP_LOGCONFIG(TAG, "  BTHome Temperature Sensor: %s", this->bthome_temperature_sensor_->get_name().c_str());
   }
   if (this->bthome_humidity_sensor_ != nullptr) {
-      ESP_LOGCONFIG(TAG, "  BTHome Humidity Sensor: %s", this->bthome_humidity_sensor_->get_name().c_str());
+//      ESP_LOGCONFIG(TAG, "  BTHome Humidity Sensor: %s", this->bthome_humidity_sensor_->get_name().c_str());
   }
   if (this->bthome_battery_sensor_ != nullptr) {
-      ESP_LOGCONFIG(TAG, "  BTHome Battery Sensor: %s", this->bthome_battery_sensor_->get_name().c_str());
+//      ESP_LOGCONFIG(TAG, "  BTHome Battery Sensor: %s", this->bthome_battery_sensor_->get_name().c_str());
   }
   if (this->bthome_voltage_sensor_ != nullptr) {
-      ESP_LOGCONFIG(TAG, "  BTHome Voltage Sensor: %s", this->bthome_voltage_sensor_->get_name().c_str());
+//      ESP_LOGCONFIG(TAG, "  BTHome Voltage Sensor: %s", this->bthome_voltage_sensor_->get_name().c_str());
   }
-  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT.");
+//  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT.");
 }
 
 void CustomBLEScanner::set_rssi_threshold(int rssi) {
