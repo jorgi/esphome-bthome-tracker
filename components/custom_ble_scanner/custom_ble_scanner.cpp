@@ -344,7 +344,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         int16_t raw_temp = (int16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_temp * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Temperature: %.2f °C", value);
+//        ESP_LOGD(TAG, "  BTHome Temperature: %.2f °C", value);
         state_doc["temperature"] = round(value * 100) / 100.0;
         if (this->bthome_temperature_sensor_ != nullptr) {
           this->bthome_temperature_sensor_->publish_state(value);
@@ -356,7 +356,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         uint16_t raw_hum = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_hum * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Humidity: %.2f %%", value);
+//        ESP_LOGD(TAG, "  BTHome Humidity: %.2f %%", value);
         state_doc["humidity"] = round(value * 100) / 100.0;
         if (this->bthome_humidity_sensor_ != nullptr) {
           this->bthome_humidity_sensor_->publish_state(value);
@@ -368,7 +368,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
         uint8_t bat_percent = bthome_data[offset];
         value = (float)bat_percent;
-        ESP_LOGD(TAG, "  BTHome Battery: %.0f %%", value);
+//        ESP_LOGD(TAG, "  BTHome Battery: %.0f %%", value);
         state_doc["battery"] = (int)value;
         if (this->bthome_battery_sensor_ != nullptr) {
           this->bthome_battery_sensor_->publish_state(value);
@@ -380,7 +380,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         uint16_t raw_voltage_mv = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_voltage_mv * 0.001f;
-        ESP_LOGD(TAG, "  BTHome Voltage: %.3f V", value);
+//        ESP_LOGD(TAG, "  BTHome Voltage: %.3f V", value);
         state_doc["voltage"] = round(value * 1000) / 1000.0;
         if (this->bthome_voltage_sensor_ != nullptr) {
             this->bthome_voltage_sensor_->publish_state(value);
@@ -431,22 +431,22 @@ void CustomBLEScanner::dump_config() {
   if (this->tracker_ != nullptr) {
     ESP_LOGCONFIG(TAG, "  Attached to ESP32 BLE Tracker");
   }
-  if (this->ble_raw_data_sensor_ != nullptr) {
+//  if (this->ble_raw_data_sensor_ != nullptr) {
 //      ESP_LOGCONFIG(TAG, "  BLE Raw Data Text Sensor: %s", this->ble_raw_data_sensor_->get_name().c_str());
-  }
-  if (this->bthome_temperature_sensor_ != nullptr) {
+//  }
+//  if (this->bthome_temperature_sensor_ != nullptr) {
 //      ESP_LOGCONFIG(TAG, "  BTHome Temperature Sensor: %s", this->bthome_temperature_sensor_->get_name().c_str());
-  }
-  if (this->bthome_humidity_sensor_ != nullptr) {
+//  }
+//  if (this->bthome_humidity_sensor_ != nullptr) {
 //      ESP_LOGCONFIG(TAG, "  BTHome Humidity Sensor: %s", this->bthome_humidity_sensor_->get_name().c_str());
-  }
-  if (this->bthome_battery_sensor_ != nullptr) {
+//  }
+//  if (this->bthome_battery_sensor_ != nullptr) {
 //      ESP_LOGCONFIG(TAG, "  BTHome Battery Sensor: %s", this->bthome_battery_sensor_->get_name().c_str());
-  }
-  if (this->bthome_voltage_sensor_ != nullptr) {
+//  }
+//  if (this->bthome_voltage_sensor_ != nullptr) {
 //      ESP_LOGCONFIG(TAG, "  BTHome Voltage Sensor: %s", this->bthome_voltage_sensor_->get_name().c_str());
-  }
-//  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT.");
+//  }
+//  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT."); *//
 }
 
 void CustomBLEScanner::set_rssi_threshold(int rssi) {
