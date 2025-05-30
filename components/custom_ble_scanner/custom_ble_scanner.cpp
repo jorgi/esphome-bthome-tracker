@@ -129,8 +129,8 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   // This block is for logging, only triggers once per second for efficiency
   if (millis() - last_log_time_ >= 1000) {
 //    ESP_LOGD(TAG, "BLE Advertisement received - MAC: %s, RSSI: %d dBm, RAW: %s",
-             device.address_str().c_str(), device.get_rssi(), raw_data_str.c_str());
-    last_log_time_ = millis();
+//             device.address_str().c_str(), device.get_rssi(), raw_data_str.c_str());
+//    last_log_time_ = millis();
 
     if (this->ble_raw_data_sensor_ != nullptr) {
       this->ble_raw_data_sensor_->publish_state(device.address_str() + " | RSSI: " + std::to_string(device.get_rssi()) + " | AD: " + raw_data_str);
