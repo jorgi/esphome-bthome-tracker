@@ -120,12 +120,16 @@ void CustomBLEScanner::loop() {
 }
 
 bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
-  // REVERTED TO ORIGINAL, CORRECT WAY TO GET RAW AD DATA
-  const esp_ble_gap_cb_param_t::ble_scan_result_evt_param &scan_result = device.get_scan_result();
+  // --- THIS IS THE CRITICAL CHANGE ---
+  // Corrected: Get the ESPHome BLEScanResult object
+  const esphome::esp32_ble::BLEScanResult &esphome_scan_result = device.get_scan_result();
   std::vector<uint8_t> raw_ad_vector;
-  if (scan_result.ble_adv != nullptr && scan_result.adv_data_len > 0) {
-    raw_ad_vector.assign(scan_result.ble_adv, scan_result.ble_adv + scan_result.adv_data_len);
+
+  // Access the raw ble_adv and adv_data_len from within the esphome_scan_result object
+  if (esphome_scan_result.ble_adv != nullptr && esphome_scan_result.adv_data_len > 0) {
+    raw_ad_vector.assign(esphome_scan_result.ble_adv, esphome_scan_result.ble_adv + esphome_scan_result.adv_data_len);
   }
+  // --- END CRITICAL CHANGE ---
   std::string raw_data_str = format_vector_to_hex(raw_ad_vector);
 
   // This block is for logging, only triggers once per second for efficiency
