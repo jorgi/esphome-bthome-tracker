@@ -10,7 +10,7 @@
 #include <cmath>     // Added for round() function
 #include <algorithm> // Added for std::transform
 #include <cctype>    // Added for ::tolower
-#include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h" // Ensure this is included for ESPBTUUID
+#include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h" // Ensure this is included for ESPBTUUID and ESPBTDevice
 
 namespace esphome {
 namespace custom_ble_scanner {
@@ -91,7 +91,7 @@ void CustomBLEScanner::loop() {
   // Generic device data publishing (if still desired)
   if (millis() - last_generic_publish_time_ >= generic_publish_interval_ms_) {
     last_generic_publish_time_ = millis();
-    ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT..."); // Uncommented for debugging
+    ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
 
     for (auto const& [mac_address_u64, device_info] : known_ble_devices_) {
       std::string mac_address_str = mac_address_to_string(mac_address_u64);
@@ -108,7 +108,7 @@ void CustomBLEScanner::loop() {
       serializeJson(doc, payload);
 
       mqtt::global_mqtt_client->publish(topic, payload.c_str(), payload.length(), 0, true); // Retain=true
-      ESP_LOGV(TAG, "Published generic data for %s to %s: %s", mac_address_str.c_str(), topic.c_str(), payload.c_str()); // Uncommented
+      ESP_LOGV(TAG, "Published generic data for %s to %s: %s", mac_address_str.c_str(), topic.c_str(), payload.c_str());
     }
   }
 
@@ -120,8 +120,12 @@ void CustomBLEScanner::loop() {
 }
 
 bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
-  // CORRECTED LINE: Get raw advertisement data directly from the device object
-  const std::vector<uint8_t> &raw_ad_vector = device.get_advertisement_data();
+  // REVERTED TO ORIGINAL, CORRECT WAY TO GET RAW AD DATA
+  const esp_ble_gap_cb_param_t::ble_scan_result_evt_param &scan_result = device.get_scan_result();
+  std::vector<uint8_t> raw_ad_vector;
+  if (scan_result.ble_adv != nullptr && scan_result.adv_data_len > 0) {
+    raw_ad_vector.assign(scan_result.ble_adv, scan_result.ble_adv + scan_result.adv_data_len);
+  }
   std::string raw_data_str = format_vector_to_hex(raw_ad_vector);
 
   // This block is for logging, only triggers once per second for efficiency
@@ -149,11 +153,11 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   }
 
   if (is_bthome_v2_device) {
-    ESP_LOGD(TAG, "Found BTHome v2 device %s! Processing data...", device.address_str().c_str()); // Uncommented
+    ESP_LOGD(TAG, "Found BTHome v2 device %s! Processing data...", device.address_str().c_str());
     return parse_bthome_v2_device(device); // This function will now manage BTHomeDevice objects
   }
 
-  ESP_LOGV(TAG, "Storing generic device %s, RSSI: %d dBm", device.address_str().c_str(), device.get_rssi()); // Uncommented
+  ESP_LOGV(TAG, "Storing generic device %s, RSSI: %d dBm", device.address_str().c_str(), device.get_rssi());
   BLEDeviceInfo info;
   info.last_advertisement_time = millis();
   info.last_rssi = device.get_rssi();
@@ -298,7 +302,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   if (it == this->bthome_devices_.end()) {
     // New BTHome device detected
     ESP_LOGI(TAG, "First time seeing BTHome v2 device: %s. Creating new BTHomeDevice object.", device_mac_str.c_str());
-    // FIX: Pass the raw address (uint8_t*) to the BTHomeDevice constructor
+    // Pass the raw address (uint8_t*) to the BTHomeDevice constructor
     bthome_dev = new BTHomeDevice(device.address()); // Create new BTHomeDevice
     this->bthome_devices_[device_mac_u64] = bthome_dev; // Store it in the map
 
@@ -337,7 +341,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_PACKET_ID: {
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
         uint8_t raw_packet_id = bthome_data[offset];
-        ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id); // Uncommented for debugging
+        ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id);
         offset += 1;
         break;
       }
@@ -345,7 +349,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         int16_t raw_temp = (int16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_temp * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Temperature: %.2f °C", value); // Uncommented for debugging
+        ESP_LOGD(TAG, "  BTHome Temperature: %.2f °C", value);
         state_doc["temperature"] = round(value * 100) / 100.0;
         if (this->bthome_temperature_sensor_ != nullptr) {
           this->bthome_temperature_sensor_->publish_state(value);
@@ -357,7 +361,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         uint16_t raw_hum = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_hum * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Humidity: %.2f %%", value); // Uncommented for debugging
+        ESP_LOGD(TAG, "  BTHome Humidity: %.2f %%", value);
         state_doc["humidity"] = round(value * 100) / 100.0;
         if (this->bthome_humidity_sensor_ != nullptr) {
           this->bthome_humidity_sensor_->publish_state(value);
@@ -369,7 +373,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
         uint8_t bat_percent = bthome_data[offset];
         value = (float)bat_percent;
-        ESP_LOGD(TAG, "  BTHome Battery: %.0f %%", value); // Uncommented for debugging
+        ESP_LOGD(TAG, "  BTHome Battery: %.0f %%", value);
         state_doc["battery"] = (int)value;
         if (this->bthome_battery_sensor_ != nullptr) {
           this->bthome_battery_sensor_->publish_state(value);
@@ -381,7 +385,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         uint16_t raw_voltage_mv = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8));
         value = raw_voltage_mv * 0.001f;
-        ESP_LOGD(TAG, "  BTHome Voltage: %.3f V", value); // Uncommented for debugging
+        ESP_LOGD(TAG, "  BTHome Voltage: %.3f V", value);
         state_doc["voltage"] = round(value * 1000) / 1000.0;
         if (this->bthome_voltage_sensor_ != nullptr) {
             this->bthome_voltage_sensor_->publish_state(value);
@@ -416,9 +420,9 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
 
   if (!state_doc.isNull() && state_doc.size() > 0) {
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
-    ESP_LOGV(TAG, "Published BTHome state for %s to %s: %s", device_mac_str.c_str(), state_topic.c_str(), state_payload.c_str()); // Uncommented
+    ESP_LOGV(TAG, "Published BTHome state for %s to %s: %s", device_mac_str.c_str(), state_topic.c_str(), state_payload.c_str());
   } else {
-    ESP_LOGD(TAG, "No BTHome measurements parsed for %s, skipping MQTT state publish.", device_mac_str.c_str()); // Uncommented
+    ESP_LOGD(TAG, "No BTHome measurements parsed for %s, skipping MQTT state publish.", device_mac_str.c_str());
   }
 
   return true;
@@ -448,7 +452,7 @@ void CustomBLEScanner::dump_config() {
   if (this->bthome_voltage_sensor_ != nullptr) {
       ESP_LOGCONFIG(TAG, "  BTHome Voltage Sensor: %s", this->bthome_voltage_sensor_->get_name().c_str());
   }
-  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT."); // Uncommented
+  ESP_LOGCONFIG(TAG, "  BTHome devices will be dynamically discovered via MQTT.");
 }
 
 void CustomBLEScanner::set_rssi_threshold(int rssi) {
