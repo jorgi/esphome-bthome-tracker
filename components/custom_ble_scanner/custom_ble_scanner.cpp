@@ -174,16 +174,16 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   info.last_rssi = device.get_rssi();
 
   // NEW: Capture name and manufacturer data
-  // FIX 1: Use has_value() and value() for optional
-  if (device.get_name().has_value()) {
-    info.name = device.get_name().value();
+  // FINAL FIX: Get the name as a string and check if it's empty.
+  std::string device_name = device.get_name();
+  if (!device_name.empty()) {
+    info.name = device_name;
   } else {
     info.name = "N/A";
   }
   
   std::string manuf_data_str = "";
   for (const auto &manuf_data : device.get_manufacturer_datas()) {
-    // FIX 2: Correctly format the 16-bit company ID
     char buffer[7]; // "0xABCD" + null terminator
     snprintf(buffer, sizeof(buffer), "0x%04X", manuf_data.uuid.get_uuid().uuid.uuid16);
     manuf_data_str += buffer;
@@ -198,7 +198,7 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   return true;
 }
 
-// NEW: Function to send discovery messages for a single BTHome device
+// Function to send discovery messages for a single BTHome device
 void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *device_obj) {
     if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) {
         ESP_LOGW(TAG, "MQTT not connected, skipping discovery for %s", mac_address_to_string(device_obj->address).c_str());
@@ -270,7 +270,7 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
     send_sensor_discovery("Voltage", "V", "voltage", "measurement");
 }
 
-// NEW: Main function to refresh discovery for all known BTHome devices
+// Main function to refresh discovery for all known BTHome devices
 void CustomBLEScanner::send_all_bthome_discovery_messages() {
   if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) {
     ESP_LOGW(TAG, "MQTT not connected, skipping global BTHome discovery scan.");
@@ -348,10 +348,10 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   }
 
   // --- Update HA device name if a better advertised name is found ---
-  // device.get_name() returns an optional<std::string>, so we need to check if it has a value
-  optional<std::string> received_advertised_name_opt = device.get_name();
-  if (received_advertised_name_opt.has_value()) {
-      bthome_dev->update_ha_device_name(received_advertised_name_opt.value()); // Pass the string value
+  // Using the same robust check for the name
+  std::string bthome_device_name = device.get_name();
+  if (!bthome_device_name.empty()) {
+      bthome_dev->update_ha_device_name(bthome_device_name);
   }
 
   // Update last seen time for this device
@@ -371,7 +371,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     switch (type) {
       case BTHOME_PACKET_ID: {
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
-        uint8_t raw_packet_id = bthome_data[offset]; // CORRECTED: Renamed variable to match usage
+        uint8_t raw_packet_id = bthome_data[offset]; 
         ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id);
         offset += 1;
         break;
