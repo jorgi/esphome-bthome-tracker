@@ -93,7 +93,7 @@ void CustomBLEScanner::loop() {
     return;
   }
 
-  // Generic device data publishing (if still desired)
+  // Generic device data publishing
   if (millis() - last_generic_publish_time_ >= generic_publish_interval_ms_) {
     last_generic_publish_time_ = millis();
     ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
@@ -104,10 +104,12 @@ void CustomBLEScanner::loop() {
 
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
 
-      JsonDocument doc; // Use modern JsonDocument
+      JsonDocument doc;
       doc["mac"] = mac_address_str;
+      doc["name"] = device_info.name; // NEW: Publish name
       doc["rssi"] = device_info.last_rssi;
-      doc["last_seen"] = (millis() - device_info.last_advertisement_time) / 1000.0f;
+      doc["last_seen_ago_s"] = (millis() - device_info.last_advertisement_time) / 1000.0f;
+      doc["manufacturer_data"] = device_info.manufacturer_data; // NEW: Publish manufacturer data
 
       std::string payload;
       serializeJson(doc, payload);
@@ -117,7 +119,7 @@ void CustomBLEScanner::loop() {
     }
   }
 
-  // NEW: Periodically send discovery messages for all BTHome devices
+  // Periodically send discovery messages for all BTHome devices
   if (millis() - last_bthome_discovery_time_ >= BTHOME_DISCOVERY_INTERVAL_MS) {
     last_bthome_discovery_time_ = millis();
     this->send_all_bthome_discovery_messages();
@@ -166,10 +168,24 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
     return parse_bthome_v2_device(device); // This function will now manage BTHomeDevice objects
   }
 
-  ESP_LOGV(TAG, "Storing generic device %s, RSSI: %d dBm", device.address_str().c_str(), device.get_rssi());
+  // Handle generic devices
   BLEDeviceInfo info;
   info.last_advertisement_time = millis();
   info.last_rssi = device.get_rssi();
+
+  // NEW: Capture name and manufacturer data
+  info.name = device.get_name().value_or("N/A");
+  
+  std::string manuf_data_str = "";
+  for (const auto &manuf_data : device.get_manufacturer_datas()) {
+    // Format as "CompanyID: HexData"
+    manuf_data_str += format_hex_pretty(manuf_data.uuid.get_uuid().to_raw(), 2);
+    manuf_data_str += ": ";
+    manuf_data_str += format_hex_pretty(manuf_data.data);
+    manuf_data_str += " | ";
+  }
+  info.manufacturer_data = manuf_data_str;
+  
   known_ble_devices_[device.address_uint64()] = info;
 
   return true;
@@ -436,11 +452,11 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   return true;
 }
 
-// New function to prune stale devices from memory
+// Function to prune stale devices from memory ONLY.
 void CustomBLEScanner::prune_stale_devices() {
   const uint32_t now = millis();
   const uint32_t stale_timeout = 900000; // 15 minutes
-  ESP_LOGD(TAG, "Pruning stale devices (older than %u ms)...", stale_timeout);
+  ESP_LOGD(TAG, "Pruning stale devices from memory (older than %u ms)...", stale_timeout);
 
   // Prune generic devices
   int pruned_generic_count = 0;
@@ -453,7 +469,7 @@ void CustomBLEScanner::prune_stale_devices() {
     }
   }
   if (pruned_generic_count > 0) {
-    ESP_LOGD(TAG, "Pruned %d stale generic devices.", pruned_generic_count);
+    ESP_LOGD(TAG, "Pruned %d stale generic devices from memory.", pruned_generic_count);
   }
 
   // Prune BTHome devices
@@ -468,7 +484,7 @@ void CustomBLEScanner::prune_stale_devices() {
     }
   }
   if (pruned_bthome_count > 0) {
-    ESP_LOGD(TAG, "Pruned %d stale BTHome devices.", pruned_bthome_count);
+    ESP_LOGD(TAG, "Pruned %d stale BTHome devices from memory.", pruned_bthome_count);
   }
 }
 
