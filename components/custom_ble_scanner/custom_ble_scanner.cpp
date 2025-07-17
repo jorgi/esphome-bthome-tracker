@@ -98,7 +98,7 @@ void CustomBLEScanner::loop() {
 
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
 
-      JsonDocument doc(512);
+      StaticJsonDocument<512> doc;
       doc["mac"] = mac_address_str;
       doc["rssi"] = device_info.last_rssi;
       doc["last_seen"] = (millis() - device_info.last_advertisement_time) / 1000.0f;
@@ -196,7 +196,7 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
     ESP_LOGD(TAG, "DEBUG: HA Device Name for discovery: '%s'", ha_device_name.c_str());
 
     // Common 'device' block for Home Assistant
-    JsonDocument device_doc(512);
+    StaticJsonDocument<512> device_doc;
     JsonArray identifiers = device_doc["identifiers"].to<JsonArray>();
     identifiers.add(ha_device_identifier);
     device_doc["name"] = ha_device_name;
@@ -210,7 +210,7 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
 
     // Lambda to send sensor discovery messages
     auto send_sensor_discovery = [&](const std::string& sensor_type, const std::string& unit, const std::string& dev_class, const std::string& state_class) {
-        JsonDocument sensor_config_doc(512);
+        StaticJsonDocument<512> sensor_config_doc;
         sensor_config_doc["name"] = sensor_type;
         std::string entity_id_clean = to_lower_string(sensor_type);
         
@@ -329,7 +329,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   bthome_dev->last_seen_millis_ = millis();
 
   // --- Parse Measurements and Publish State ---
-  JsonDocument state_doc(512); // Increased to 512
+  StaticJsonDocument<512> state_doc; // Increased to 512
   size_t offset = 1;
 
   while (offset < bthome_data.size()) {
@@ -342,7 +342,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     switch (type) {
       case BTHOME_PACKET_ID: {
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
-        uint8_t raw_packet_id = bthome_data[offset];
+        uint8_t raw_people_id = bthome_data[offset];
         ESP_LOGD(TAG, "  BTHome Packet ID: 0x%02X", raw_packet_id);
         offset += 1;
         break;
