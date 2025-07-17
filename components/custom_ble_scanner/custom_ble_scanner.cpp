@@ -42,7 +42,6 @@ std::string mac_address_to_string(const uint8_t* mac_array) {
   return std::string(buffer);
 }
 
-
 // Helper function to convert MAC address (uint64_t) to clean string format aa_bb_cc_dd_ee_ff for MQTT topics
 std::string mac_address_to_clean_string(uint64_t mac) {
   char buffer[18];
@@ -99,7 +98,7 @@ void CustomBLEScanner::loop() {
 
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
 
-      DynamicJsonDocument doc(512);
+      JsonDocument doc(512);
       doc["mac"] = mac_address_str;
       doc["rssi"] = device_info.last_rssi;
       doc["last_seen"] = (millis() - device_info.last_advertisement_time) / 1000.0f;
@@ -197,8 +196,8 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
     ESP_LOGD(TAG, "DEBUG: HA Device Name for discovery: '%s'", ha_device_name.c_str());
 
     // Common 'device' block for Home Assistant
-    DynamicJsonDocument device_doc(512);
-    JsonArray identifiers = device_doc.createNestedArray("identifiers");
+    JsonDocument device_doc(512);
+    JsonArray identifiers = device_doc["identifiers"].to<JsonArray>();
     identifiers.add(ha_device_identifier);
     device_doc["name"] = ha_device_name;
     device_doc["mdl"] = "BTHome v2 Device";
@@ -211,7 +210,7 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
 
     // Lambda to send sensor discovery messages
     auto send_sensor_discovery = [&](const std::string& sensor_type, const std::string& unit, const std::string& dev_class, const std::string& state_class) {
-        DynamicJsonDocument sensor_config_doc(512);
+        JsonDocument sensor_config_doc(512);
         sensor_config_doc["name"] = sensor_type;
         std::string entity_id_clean = to_lower_string(sensor_type);
         
@@ -282,7 +281,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   }
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
-
   if (bthome_data.size() < 2) {
     ESP_LOGW(TAG, "BTHome v2 device %s service data too short (%zu bytes). Payload: %s",
               device.address_str().c_str(), bthome_data.size(), format_vector_to_hex(bthome_data).c_str());
@@ -331,7 +329,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   bthome_dev->last_seen_millis_ = millis();
 
   // --- Parse Measurements and Publish State ---
-  DynamicJsonDocument state_doc(512); // Increased to 512
+  JsonDocument state_doc(512); // Increased to 512
   size_t offset = 1;
 
   while (offset < bthome_data.size()) {
@@ -463,7 +461,6 @@ void CustomBLEScanner::set_rssi_threshold(int rssi) {
   rssi_threshold_ = rssi;
   ESP_LOGD(TAG, "RSSI threshold set to %d dBm", rssi_threshold_);
 }
-
 
 // --- Helper functions for BTHomeMeasurement (definitions) ---
 std::string BTHomeDataTypeToString(uint8_t type) {
