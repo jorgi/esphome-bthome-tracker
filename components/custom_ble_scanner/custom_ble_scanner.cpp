@@ -174,12 +174,19 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   info.last_rssi = device.get_rssi();
 
   // NEW: Capture name and manufacturer data
-  info.name = device.get_name().value_or("N/A");
+  // FIX 1: Use has_value() and value() for optional
+  if (device.get_name().has_value()) {
+    info.name = device.get_name().value();
+  } else {
+    info.name = "N/A";
+  }
   
   std::string manuf_data_str = "";
   for (const auto &manuf_data : device.get_manufacturer_datas()) {
-    // Format as "CompanyID: HexData"
-    manuf_data_str += format_hex_pretty(manuf_data.uuid.get_uuid().to_raw(), 2);
+    // FIX 2: Correctly format the 16-bit company ID
+    char buffer[7]; // "0xABCD" + null terminator
+    snprintf(buffer, sizeof(buffer), "0x%04X", manuf_data.uuid.get_uuid().uuid.uuid16);
+    manuf_data_str += buffer;
     manuf_data_str += ": ";
     manuf_data_str += format_hex_pretty(manuf_data.data);
     manuf_data_str += " | ";
