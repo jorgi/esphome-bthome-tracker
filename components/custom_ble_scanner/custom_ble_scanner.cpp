@@ -10,7 +10,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
-#include <string> // <--- ADD THIS LINE
+#include <string>
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
 
 namespace esphome {
@@ -157,7 +157,7 @@ void CustomBLEScanner::loop() {
       JsonDocument doc;
       doc["mac"] = mac_address_str;
       doc["name"] = device_info.name;
-      doc["rssi"]_ = device_info.last_rssi;
+      doc["rssi"] = device_info.last_rssi; // FIX: Removed stray underscore
       // UPDATED: Use the new time formatter
       doc["last_seen_ago"] = format_time_ago((millis() - device_info.last_advertisement_time) / 1000);
       doc["manufacturer_data"] = device_info.manufacturer_data;
