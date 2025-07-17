@@ -82,6 +82,12 @@ void CustomBLEScanner::setup() {
 }
 
 void CustomBLEScanner::loop() {
+  // Periodically prune stale devices to prevent memory leaks
+  if (millis() - last_prune_time_ > 300000) { // Prune every 5 minutes
+    last_prune_time_ = millis();
+    this->prune_stale_devices();
+  }
+  
   if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) {
     // Don't publish if MQTT is not connected
     return;
@@ -428,6 +434,42 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   }
 
   return true;
+}
+
+// New function to prune stale devices from memory
+void CustomBLEScanner::prune_stale_devices() {
+  const uint32_t now = millis();
+  const uint32_t stale_timeout = 900000; // 15 minutes
+  ESP_LOGD(TAG, "Pruning stale devices (older than %u ms)...", stale_timeout);
+
+  // Prune generic devices
+  int pruned_generic_count = 0;
+  for (auto it = known_ble_devices_.begin(); it != known_ble_devices_.end();) {
+    if (now - it->second.last_advertisement_time > stale_timeout) {
+      it = known_ble_devices_.erase(it);
+      pruned_generic_count++;
+    } else {
+      ++it;
+    }
+  }
+  if (pruned_generic_count > 0) {
+    ESP_LOGD(TAG, "Pruned %d stale generic devices.", pruned_generic_count);
+  }
+
+  // Prune BTHome devices
+  int pruned_bthome_count = 0;
+  for (auto it = bthome_devices_.begin(); it != bthome_devices_.end();) {
+    if (now - it->second->last_seen_millis_ > stale_timeout) {
+      delete it->second; // Free the allocated BTHomeDevice object
+      it = bthome_devices_.erase(it);
+      pruned_bthome_count++;
+    } else {
+      ++it;
+    }
+  }
+  if (pruned_bthome_count > 0) {
+    ESP_LOGD(TAG, "Pruned %d stale BTHome devices.", pruned_bthome_count);
+  }
 }
 
 void CustomBLEScanner::dump_config() {

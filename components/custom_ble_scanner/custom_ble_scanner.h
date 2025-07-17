@@ -115,11 +115,13 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   void set_bthome_voltage_sensor(sensor::Sensor *sens) { bthome_voltage_sensor_ = sens; }
 
  protected:
+  void prune_stale_devices(); // New function for pruning
   esp32_ble_tracker::ESP32BLETracker *tracker_{nullptr};
   int rssi_threshold_{-100};
   uint32_t last_log_time_{0};
   uint32_t generic_publish_interval_ms_{60000};
   uint32_t last_generic_publish_time_{0};
+  uint32_t last_prune_time_{0}; // New variable for pruning interval
 
   std::map<uint64_t, BLEDeviceInfo> known_ble_devices_;
 
