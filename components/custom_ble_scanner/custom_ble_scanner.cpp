@@ -67,6 +67,47 @@ std::string format_vector_to_hex(const std::vector<uint8_t>& data) {
   return esphome::format_hex_pretty(data);
 }
 
+// NEW: Helper function to format seconds into a human-readable string
+std::string format_time_ago(uint32_t seconds) {
+  if (seconds < 60) {
+    return std::to_string(seconds) + "s ago";
+  }
+  if (seconds < 3600) {
+    return std::to_string(seconds / 60) + "m " + std::to_string(seconds % 60) + "s ago";
+  }
+  if (seconds < 86400) {
+    return std::to_string(seconds / 3600) + "h " + std::to_string((seconds % 3600) / 60) + "m ago";
+  }
+  return std::to_string(seconds / 86400) + "d " + std::to_string((seconds % 86400) / 3600) + "h ago";
+}
+
+// NEW: Helper function to decode manufacturer data
+std::string decode_manufacturer_data(uint16_t company_id, const std::vector<uint8_t>& data) {
+  switch (company_id) {
+    case 0x004C: { // Apple
+      if (data.size() < 2) return "Apple (Too Short)";
+      uint8_t type = data[0];
+      // See: https://github.com/furiousMAC/continuity/blob/master/messages/apple/nearby.md
+      switch (type) {
+        case 0x02: return "Apple Device (iPhone/iPad/Mac)";
+        case 0x03: return "Apple Device (Watch)";
+        case 0x05: return "Apple Device (AirPods)";
+        case 0x07: return "Apple Device (HomePod)";
+        case 0x09: return "Apple Device (AirTag)";
+        case 0x0C: return "Apple Find My";
+        case 0x10: return "Apple AirDrop";
+        default: return "Apple (Unknown Type)";
+      }
+      break;
+    }
+    // Add other cases for manufacturers like Samsung (0x0075), Google (0x00E0) etc. here
+    default:
+      return ""; // No specific decoder available
+  }
+  return "";
+}
+
+
 // --- CustomBLEScanner Class Implementation ---
 
 void CustomBLEScanner::setup() {
@@ -106,10 +147,12 @@ void CustomBLEScanner::loop() {
 
       JsonDocument doc;
       doc["mac"] = mac_address_str;
-      doc["name"] = device_info.name; // NEW: Publish name
+      doc["name"] = device_info.name;
       doc["rssi"] = device_info.last_rssi;
-      doc["last_seen_ago_s"] = (millis() - device_info.last_advertisement_time) / 1000.0f;
-      doc["manufacturer_data"] = device_info.manufacturer_data; // NEW: Publish manufacturer data
+      // UPDATED: Use the new time formatter
+      doc["last_seen_ago"] = format_time_ago((millis() - device_info.last_advertisement_time) / 1000);
+      doc["manufacturer_data"] = device_info.manufacturer_data;
+      doc["decoded_data"] = device_info.decoded_data; // NEW: Publish decoded data
 
       std::string payload;
       serializeJson(doc, payload);
@@ -172,9 +215,7 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   BLEDeviceInfo info;
   info.last_advertisement_time = millis();
   info.last_rssi = device.get_rssi();
-
-  // NEW: Capture name and manufacturer data
-  // FINAL FIX: Get the name as a string and check if it's empty.
+  
   std::string device_name = device.get_name();
   if (!device_name.empty()) {
     info.name = device_name;
@@ -183,15 +224,26 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
   }
   
   std::string manuf_data_str = "";
+  std::string decoded_manuf_data_str = "";
   for (const auto &manuf_data : device.get_manufacturer_datas()) {
+    uint16_t company_id = manuf_data.uuid.get_uuid().uuid.uuid16;
+    
+    // Format raw data for display
     char buffer[7]; // "0xABCD" + null terminator
-    snprintf(buffer, sizeof(buffer), "0x%04X", manuf_data.uuid.get_uuid().uuid.uuid16);
+    snprintf(buffer, sizeof(buffer), "0x%04X", company_id);
     manuf_data_str += buffer;
     manuf_data_str += ": ";
     manuf_data_str += format_hex_pretty(manuf_data.data);
     manuf_data_str += " | ";
+    
+    // NEW: Attempt to decode it
+    std::string decoded_part = decode_manufacturer_data(company_id, manuf_data.data);
+    if (!decoded_part.empty()) {
+      decoded_manuf_data_str += decoded_part + " | ";
+    }
   }
   info.manufacturer_data = manuf_data_str;
+  info.decoded_data = decoded_manuf_data_str;
   
   known_ble_devices_[device.address_uint64()] = info;
 
@@ -348,7 +400,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   }
 
   // --- Update HA device name if a better advertised name is found ---
-  // Using the same robust check for the name
   std::string bthome_device_name = device.get_name();
   if (!bthome_device_name.empty()) {
       bthome_dev->update_ha_device_name(bthome_device_name);

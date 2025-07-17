@@ -88,8 +88,9 @@ class BTHomeDevice {
 struct BLEDeviceInfo {
   uint32_t last_advertisement_time;
   int last_rssi;
-  std::string name;               // NEW: Store the device's advertised name
-  std::string manufacturer_data;  // NEW: Store formatted manufacturer data
+  std::string name;
+  std::string manufacturer_data;
+  std::string decoded_data; // NEW: Store the decoded manufacturer data
 };
 
 class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tracker::ESPBTDeviceListener {
