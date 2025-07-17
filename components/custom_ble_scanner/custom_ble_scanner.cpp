@@ -68,7 +68,7 @@ std::string format_vector_to_hex(const std::vector<uint8_t>& data) {
   return esphome::format_hex_pretty(data);
 }
 
-// NEW: Helper function to format seconds into a human-readable string
+// Helper function to format seconds into a human-readable string
 std::string format_time_ago(uint32_t seconds) {
   if (seconds < 60) {
     return std::to_string(seconds) + "s ago";
@@ -82,13 +82,12 @@ std::string format_time_ago(uint32_t seconds) {
   return std::to_string(seconds / 86400) + "d " + std::to_string((seconds % 86400) / 3600) + "h ago";
 }
 
-// NEW: Helper function to decode manufacturer data
+// Helper function to decode manufacturer data
 std::string decode_manufacturer_data(uint16_t company_id, const std::vector<uint8_t>& data) {
   switch (company_id) {
     case 0x004C: { // Apple
       if (data.size() < 2) return "Apple (Too Short)";
       uint8_t type = data[0];
-      // See: https://github.com/furiousMAC/continuity/blob/master/messages/apple/nearby.md
       switch (type) {
         case 0x02: return "Apple Device (iPhone/iPad/Mac)";
         case 0x03: return "Apple Device (Watch)";
@@ -109,7 +108,6 @@ std::string decode_manufacturer_data(uint16_t company_id, const std::vector<uint
       }
       return "Samsung (Unknown Type)";
     }
-    // Add other cases for manufacturers like Google (0x00E0) etc. here
     default:
       return ""; // No specific decoder available
   }
@@ -139,7 +137,6 @@ void CustomBLEScanner::loop() {
   }
   
   if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) {
-    // Don't publish if MQTT is not connected
     return;
   }
 
@@ -151,7 +148,6 @@ void CustomBLEScanner::loop() {
     for (auto const& [mac_address_u64, device_info] : known_ble_devices_) {
       std::string mac_address_str = mac_address_to_string(mac_address_u64);
       std::string mac_address_clean = mac_address_to_clean_string(mac_address_u64);
-
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
 
       JsonDocument doc;
@@ -165,7 +161,7 @@ void CustomBLEScanner::loop() {
       std::string payload;
       serializeJson(doc, payload);
 
-      mqtt::global_mqtt_client->publish(topic, payload.c_str(), payload.length(), 0, true); // Retain=true
+      mqtt::global_mqtt_client->publish(topic, payload.c_str(), payload.length(), 0, true);
       ESP_LOGV(TAG, "Published generic data for %s to %s: %s", mac_address_str.c_str(), topic.c_str(), payload.c_str());
     }
   }
@@ -330,7 +326,8 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     return false;
   }
 
-  const std::vector<esp32_ble_tracker::ServiceData>* bthome_data_ptr = nullptr;
+  // FIX: The pointer must be to the vector of bytes, not the ServiceData struct
+  const std::vector<uint8_t>* bthome_data_ptr = nullptr;
   for (const auto &entry : device.get_service_datas()) {
     if (entry.uuid == BTHOME_V2_SERVICE_UUID) {
       bthome_data_ptr = &entry.data;
@@ -342,6 +339,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     ESP_LOGW(TAG, "BTHome v2 device %s missing FCD2 service data key after initial check! This should not happen.", device.address_str().c_str());
     return false;
   }
+  // This line now works correctly because the pointer type is correct
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
   if (bthome_data.size() < 2) {
