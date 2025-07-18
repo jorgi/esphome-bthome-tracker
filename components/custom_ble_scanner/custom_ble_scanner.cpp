@@ -100,26 +100,23 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
   return decoded;
 }
 
-// Implementation of BTHomeDevice's update function
 bool BTHomeDevice::update_ha_device_name(const std::string& new_name) {
   std::string lower_new_name = to_lower_string(new_name);
   if (!lower_new_name.empty() && lower_new_name != "nan" && (this->current_ha_name_.empty() || this->current_ha_name_ != new_name)) {
     ESP_LOGD("BTHomeDevice", "Updating HA device name for %s from '%s' to: '%s'",
              mac_address_to_string(this->address).c_str(), this->current_ha_name_.c_str(), new_name.c_str());
     this->current_ha_name_ = new_name;
-    return true; // Return true because the name was changed
+    return true;
   }
-  return false; // Return false if the name was not changed
+  return false;
 }
-
-// --- CustomBLEScanner Class Implementation ---
 
 uint64_t mac_address_to_uint64(const std::string &mac_str) {
     uint64_t mac = 0;
     const char *p = mac_str.c_str();
     for (int i = 0; i < 6; i++) {
         mac = (mac << 8) | (uint64_t)strtol(p, (char**)&p, 16);
-        if (i < 5) p++; // Skip the ':' or '-'
+        if (i < 5) p++;
     }
     return mac;
 }
@@ -137,46 +134,59 @@ void CustomBLEScanner::setup() {
   } else {
     ESP_LOGE(TAG, "ESP32 BLE Tracker not set!");
   }
+  this->generic_publish_iterator_ = this->known_ble_devices_.end();
 }
 
 void CustomBLEScanner::loop() {
+  // Pruning stale devices (every 5 minutes)
   if (millis() - this->last_prune_time_ > 300000) {
     this->last_prune_time_ = millis();
     this->prune_stale_devices();
   }
   
-  if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) return;
+  // BTHome discovery messages (every 10 minutes)
+  if (millis() - this->last_bthome_discovery_time_ >= this->bthome_discovery_interval_ms_) {
+    this->last_bthome_discovery_time_ = millis();
+    this->send_all_bthome_discovery_messages();
+  }
 
-  if (this->generic_scanner_enabled_ && (millis() - this->last_generic_publish_time_ >= this->generic_publish_interval_ms_)) {
-    this->last_generic_publish_time_ = millis();
-    ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
-    for (auto const& [mac_address_u64, device_info] : this->known_ble_devices_) {
+  // --- NON-BLOCKING GENERIC PUBLISH LOGIC ---
+  if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected() || !this->generic_scanner_enabled_) {
+    return;
+  }
+
+  // 1. Check if it's time to start a new publishing burst
+  if (!this->is_publishing_generic_burst_ && (millis() - this->last_generic_publish_time_ >= this->generic_publish_interval_ms_)) {
+    this->is_publishing_generic_burst_ = true;
+    this->generic_publish_iterator_ = this->known_ble_devices_.begin();
+    ESP_LOGD(TAG, "Starting generic BLE publish burst for %d devices...", this->known_ble_devices_.size());
+  }
+
+  // 2. If a burst is active, process ONE device and then exit the function
+  if (this->is_publishing_generic_burst_) {
+    if (this->generic_publish_iterator_ != this->known_ble_devices_.end()) {
+      const auto& [mac_address_u64, device_info] = *this->generic_publish_iterator_;
+      
       std::string mac_address_clean = mac_address_to_clean_string(mac_address_u64);
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
-
+      
       JsonDocument doc;
       doc["mac"] = mac_address_to_string(mac_address_u64);
       doc["name"] = device_info.name;
       doc["rssi"] = device_info.last_rssi;
       doc["last_seen_ago"] = format_time_ago((millis() - device_info.last_advertisement_time) / 1000);
-      doc["manufacturer_data"] = device_info.manufacturer_data;
       
-      if (!device_info.decoded_info.empty()) {
-          JsonObject decoded_obj = doc["decoded_info"].to<JsonObject>();
-          for (const auto& [key, value] : device_info.decoded_info) {
-              decoded_obj[key] = value;
-          }
-      }
-
       std::string payload;
       serializeJson(doc, payload);
       mqtt::global_mqtt_client->publish(topic, payload.c_str(), payload.length(), 0, true);
-    }
-  }
 
-  if (millis() - this->last_bthome_discovery_time_ >= this->bthome_discovery_interval_ms_) {
-    this->last_bthome_discovery_time_ = millis();
-    this->send_all_bthome_discovery_messages();
+      this->generic_publish_iterator_++;
+      
+    } else {
+      ESP_LOGD(TAG, "Finished generic BLE publish burst.");
+      this->is_publishing_generic_burst_ = false;
+      this->last_generic_publish_time_ = millis();
+    }
   }
 }
 
@@ -386,7 +396,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
 
       case BTHOME_PACKET_ID: { offset += 1; break; }
 
-      // Complex or Event-based types that need special handling
       case BTHOME_BUTTON_EVENT:
       case BTHOME_TIMESTAMP:
       case BTHOME_TEXT:
@@ -394,7 +403,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_MEASUREMENT_GYROSCOPE:
       case BTHOME_MEASUREMENT_ACCELERATION:
         ESP_LOGD(TAG, "Skipping complex/event type 0x%02X for now.", type);
-        // We can't know the length of these variable types, so we must stop parsing.
         offset = bthome_data.size();
         break;
 
@@ -465,7 +473,6 @@ void CustomBLEScanner::dump_config() {
   ESP_LOGCONFIG(TAG, "  Pruning Timeout: %u ms", this->prune_timeout_);
 }
 
-// --- Helper functions for BTHomeMeasurement (definitions) ---
 std::string BTHomeDataTypeToString(uint8_t type) {
     switch (type) {
         case BTHOME_PACKET_ID: return "Packet ID";
@@ -511,12 +518,15 @@ std::string BTHomeDataTypeToUnit(uint8_t type) {
     switch (type) {
         case BTHOME_MEASUREMENT_BATTERY: return "%";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "°C";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "°C";
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "°C";
         case BTHOME_MEASUREMENT_HUMIDITY: return "%";
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "%";
+        case BTHOME_MEASUREMENT_MOISTURE: return "%";
         case BTHOME_MEASUREMENT_PRESSURE: return "hPa";
         case BTHOME_MEASUREMENT_ILLUMINANCE: return "lx";
         case BTHOME_MEASUREMENT_MASS_KG: return "kg";
         case BTHOME_MEASUREMENT_MASS_LB: return "lb";
-        case BTHOME_MEASUREMENT_DEWPOINT: return "°C";
         case BTHOME_MEASUREMENT_ENERGY: return "kWh";
         case BTHOME_MEASUREMENT_POWER: return "W";
         case BTHOME_MEASUREMENT_VOLTAGE: return "V";
@@ -527,9 +537,6 @@ std::string BTHomeDataTypeToUnit(uint8_t type) {
         case BTHOME_MEASUREMENT_VOC:
              return "µg/m³";
         case BTHOME_MEASUREMENT_CO2: return "ppm";
-        case BTHOME_MEASUREMENT_MOISTURE: return "%";
-        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "%";
-        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "°C";
         case BTHOME_MEASUREMENT_GAS: return "m³";
         case BTHOME_MEASUREMENT_DISTANCE_MM: return "mm";
         case BTHOME_MEASUREMENT_DISTANCE_M: return "m";
@@ -548,7 +555,10 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
         case BTHOME_MEASUREMENT_BATTERY: return "battery";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "temperature";
         case BTHOME_MEASUREMENT_DEWPOINT: return "dewpoint";
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "temperature";
         case BTHOME_MEASUREMENT_HUMIDITY: return "humidity";
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "humidity";
+        case BTHOME_MEASUREMENT_MOISTURE: return "moisture";
         case BTHOME_MEASUREMENT_PRESSURE: return "pressure";
         case BTHOME_MEASUREMENT_ILLUMINANCE: return "illuminance";
         case BTHOME_MEASUREMENT_MASS_KG: return "weight";
@@ -564,9 +574,6 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
              return "pm10";
         case BTHOME_MEASUREMENT_CO2: return "carbon_dioxide";
         case BTHOME_MEASUREMENT_VOC: return "volatile_organic_compounds";
-        case BTHOME_MEASUREMENT_MOISTURE: return "moisture";
-        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "humidity";
-        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "temperature";
         case BTHOME_MEASUREMENT_GAS: return "gas";
         case BTHOME_MEASUREMENT_DISTANCE_MM: return "distance";
         case BTHOME_MEASUREMENT_DISTANCE_M: return "distance";
@@ -575,7 +582,6 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
         case BTHOME_MEASUREMENT_VOLUME_L: return "volume";
         case BTHOME_MEASUREMENT_VOLUME_ML: return "volume";
         case BTHOME_MEASUREMENT_VOLUME_FLOW_RATE: return "volume_flow_rate";
-
         default: return "";
     }
 }

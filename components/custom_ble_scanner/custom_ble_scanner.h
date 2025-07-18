@@ -6,7 +6,7 @@
 #include "esphome/components/mqtt/mqtt_client.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
-#include "esphome/core/application.h"
+#include "esphome/core/application.hh"
 #include "esphome/core/log.h"
 #include <map>
 #include <vector>
@@ -105,7 +105,6 @@ class BTHomeDevice {
     return this->current_ha_name_;
   }
 
-  // Declaration of the function, now returns bool
   bool update_ha_device_name(const std::string& new_name);
 };
 
@@ -159,6 +158,10 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   uint32_t last_bthome_discovery_time_{0};
 
   text_sensor::TextSensor *ble_raw_data_sensor_{nullptr};
+
+  // Member variables for non-blocking publishing
+  std::map<uint64_t, BLEDeviceInfo>::iterator generic_publish_iterator_;
+  bool is_publishing_generic_burst_ = false;
 };
 
 // Declare helper functions
