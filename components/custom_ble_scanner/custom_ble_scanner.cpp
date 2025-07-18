@@ -150,7 +150,8 @@ void CustomBLEScanner::loop() {
       doc["manufacturer_data"] = device_info.manufacturer_data;
       
       if (!device_info.decoded_info.empty()) {
-          JsonObject decoded_obj = doc.createNestedObject("decoded_info");
+          // FIX: Use modern syntax for creating a nested object
+          JsonObject decoded_obj = doc["decoded_info"].to<JsonObject>();
           for (const auto& [key, value] : device_info.decoded_info) {
               decoded_obj[key] = value;
           }
@@ -428,8 +429,8 @@ std::string BTHomeDataTypeToString(uint8_t type) {
         case BTHOME_MEASUREMENT_MASS_LB: return "Mass Lb";
         case BTHOME_MEASUREMENT_DEWPOINT: return "Dewpoint";
         case BTHOME_MEASUREMENT_COUNT_S: return "Count";
-        case BTHOME_MEASUREMENT_COUNT_M: return "Count";
-        case BTHOME_MEASUREMENT_COUNT_L: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_M: return "Count M";
+        case BTHOME_MEASUREMENT_COUNT_L: return "Count L";
         case BTHOME_MEASUREMENT_ENERGY: return "Energy";
         case BTHOME_MEASUREMENT_POWER: return "Power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "Voltage";
