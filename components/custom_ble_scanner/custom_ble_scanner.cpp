@@ -290,8 +290,6 @@ void CustomBLEScanner::send_all_bthome_discovery_messages() {
   }
 }
 
-// custom_components/custom_ble_scanner/custom_ble_scanner.cpp
-
 bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevice &device) {
   const std::vector<uint8_t>* bthome_data_ptr = nullptr;
   for (const auto &entry : device.get_service_datas()) {
@@ -304,7 +302,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   if (bthome_data_ptr == nullptr) return false;
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
-  // New line to log the raw data for debugging
   ESP_LOGD(TAG, "Parsing BTHome data for %s: %s", device.address_str().c_str(), format_vector_to_hex(bthome_data).c_str());
 
   if (bthome_data.size() < 2 || (bthome_data[0] & 0x01) != 0) return false;
@@ -361,17 +358,46 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MASS_KG, uint16_t, 2, 0.01f, mass_kg)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MASS_LB, uint16_t, 2, 0.01f, mass_lb)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DEWPOINT, int16_t, 2, 0.01f, dewpoint)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_S, uint8_t, 1, 1.0f, count)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_LEGACY, uint16_t, 2, 1.0f, count)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_M, uint16_t, 2, 1.0f, count)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_L, uint32_t, 4, 1.0f, count)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_S, uint8_t, 1, 1.0f, count_s)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_M, uint16_t, 2, 1.0f, count_m)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_L, uint32_t, 4, 1.0f, count_l)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_LEGACY, uint16_t, 2, 1.0f, count_legacy)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_ENERGY, uint32_t, 3, 0.001f, energy)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_POWER, int32_t, 3, 0.01f, power)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLTAGE, uint16_t, 2, 0.001f, voltage)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE, uint16_t, 2, 0.1f, distance_m)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_PM25, uint16_t, 2, 1.0f, pm25)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_PM10, uint16_t, 2, 1.0f, pm10)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_PM25_2, uint16_t, 2, 1.0f, pm25_2)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_PM10_2, uint16_t, 2, 1.0f, pm10_2)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_CO2, uint16_t, 2, 1.0f, co2)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOC, uint16_t, 2, 1.0f, voc)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MOISTURE, uint16_t, 2, 0.01f, moisture)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_HUMIDITY_PRECISE, uint16_t, 2, 0.1f, humidity_precise)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_TEMPERATURE_PRECISE, int16_t, 2, 0.1f, temperature_precise)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_GAS, uint16_t, 2, 1.0f, gas)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE_MM, uint16_t, 2, 1.0f, distance_mm)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE_M, uint16_t, 2, 0.1f, distance_m)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DURATION, uint32_t, 3, 0.001f, duration)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_UV_INDEX, uint16_t, 2, 0.1f, uv_index)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLUME_L, uint16_t, 2, 0.001f, volume_l)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLUME_ML, uint16_t, 2, 1.0f, volume_ml)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLUME_FLOW_RATE, uint16_t, 2, 0.001f, volume_flow_rate)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLUME_FLOW, uint16_t, 2, 0.001f, volume_flow)
+
       case BTHOME_PACKET_ID: { offset += 1; break; }
+
+      // Complex or Event-based types that need special handling
+      case BTHOME_BUTTON_EVENT:
+      case BTHOME_TIMESTAMP:
+      case BTHOME_TEXT:
+      case BTHOME_RAW:
+      case BTHOME_MEASUREMENT_GYROSCOPE:
+      case BTHOME_MEASUREMENT_ACCELERATION:
+        ESP_LOGD(TAG, "Skipping complex/event type 0x%02X for now.", type);
+        // We can't know the length of these variable types, so we must stop parsing.
+        offset = bthome_data.size();
+        break;
+
       default: {
         ESP_LOGW(TAG, "Unknown BTHome v2 data type: 0x%02X for device %s. Stopping parse for this packet.", type, device.address_str().c_str());
         offset = bthome_data.size();
@@ -442,6 +468,7 @@ void CustomBLEScanner::dump_config() {
 // --- Helper functions for BTHomeMeasurement (definitions) ---
 std::string BTHomeDataTypeToString(uint8_t type) {
     switch (type) {
+        case BTHOME_PACKET_ID: return "Packet ID";
         case BTHOME_MEASUREMENT_BATTERY: return "Battery";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "Temperature";
         case BTHOME_MEASUREMENT_HUMIDITY: return "Humidity";
@@ -450,18 +477,32 @@ std::string BTHomeDataTypeToString(uint8_t type) {
         case BTHOME_MEASUREMENT_MASS_KG: return "Mass";
         case BTHOME_MEASUREMENT_MASS_LB: return "Mass Lb";
         case BTHOME_MEASUREMENT_DEWPOINT: return "Dewpoint";
-        case BTHOME_MEASUREMENT_COUNT_S: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_S: return "Count S";
         case BTHOME_MEASUREMENT_COUNT_M: return "Count M";
         case BTHOME_MEASUREMENT_COUNT_L: return "Count L";
-        case BTHOME_MEASUREMENT_COUNT_LEGACY: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_LEGACY: return "Count Legacy";
         case BTHOME_MEASUREMENT_ENERGY: return "Energy";
         case BTHOME_MEASUREMENT_POWER: return "Power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "Voltage";
-        case BTHOME_MEASUREMENT_DISTANCE: return "Distance";
-        case BTHOME_MEASUREMENT_MOISTURE: return "Moisture";
+        case BTHOME_MEASUREMENT_PM25: return "PM2.5";
+        case BTHOME_MEASUREMENT_PM10: return "PM10";
+        case BTHOME_MEASUREMENT_PM25_2: return "PM2.5";
+        case BTHOME_MEASUREMENT_PM10_2: return "PM10";
         case BTHOME_MEASUREMENT_CO2: return "CO2";
         case BTHOME_MEASUREMENT_VOC: return "VOC";
-        case BTHOME_PACKET_ID: return "Packet ID";
+        case BTHOME_MEASUREMENT_MOISTURE: return "Moisture";
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "Humidity Precise";
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "Temperature Precise";
+        case BTHOME_MEASUREMENT_GAS: return "Gas";
+        case BTHOME_MEASUREMENT_DISTANCE_MM: return "Distance mm";
+        case BTHOME_MEASUREMENT_DISTANCE_M: return "Distance m";
+        case BTHOME_MEASUREMENT_DURATION: return "Duration";
+        case BTHOME_MEASUREMENT_UV_INDEX: return "UV Index";
+        case BTHOME_MEASUREMENT_VOLUME_L: return "Volume";
+        case BTHOME_MEASUREMENT_VOLUME_ML: return "Volume mL";
+        case BTHOME_MEASUREMENT_VOLUME_FLOW_RATE: return "Volume Flow Rate";
+        case BTHOME_MEASUREMENT_VOLUME_FLOW: return "Volume Flow";
+        case BTHOME_BUTTON_EVENT: return "Button Event";
         default: return "Unknown";
     }
 }
@@ -479,10 +520,25 @@ std::string BTHomeDataTypeToUnit(uint8_t type) {
         case BTHOME_MEASUREMENT_ENERGY: return "kWh";
         case BTHOME_MEASUREMENT_POWER: return "W";
         case BTHOME_MEASUREMENT_VOLTAGE: return "V";
-        case BTHOME_MEASUREMENT_DISTANCE: return "m";
-        case BTHOME_MEASUREMENT_MOISTURE: return "%";
+        case BTHOME_MEASUREMENT_PM25:
+        case BTHOME_MEASUREMENT_PM10:
+        case BTHOME_MEASUREMENT_PM25_2:
+        case BTHOME_MEASUREMENT_PM10_2:
+        case BTHOME_MEASUREMENT_VOC:
+             return "µg/m³";
         case BTHOME_MEASUREMENT_CO2: return "ppm";
-        case BTHOME_MEASUREMENT_VOC: return "µg/m³";
+        case BTHOME_MEASUREMENT_MOISTURE: return "%";
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "%";
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "°C";
+        case BTHOME_MEASUREMENT_GAS: return "m³";
+        case BTHOME_MEASUREMENT_DISTANCE_MM: return "mm";
+        case BTHOME_MEASUREMENT_DISTANCE_M: return "m";
+        case BTHOME_MEASUREMENT_DURATION: return "s";
+        case BTHOME_MEASUREMENT_UV_INDEX: return "UV Index";
+        case BTHOME_MEASUREMENT_VOLUME_L: return "L";
+        case BTHOME_MEASUREMENT_VOLUME_ML: return "mL";
+        case BTHOME_MEASUREMENT_VOLUME_FLOW_RATE: return "m³/h";
+        case BTHOME_MEASUREMENT_VOLUME_FLOW: return "L";
         default: return "";
     }
 }
@@ -491,19 +547,35 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
     switch (type) {
         case BTHOME_MEASUREMENT_BATTERY: return "battery";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "temperature";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "dewpoint";
         case BTHOME_MEASUREMENT_HUMIDITY: return "humidity";
         case BTHOME_MEASUREMENT_PRESSURE: return "pressure";
         case BTHOME_MEASUREMENT_ILLUMINANCE: return "illuminance";
         case BTHOME_MEASUREMENT_MASS_KG: return "weight";
         case BTHOME_MEASUREMENT_MASS_LB: return "weight";
-        case BTHOME_MEASUREMENT_DEWPOINT: return "temperature";
         case BTHOME_MEASUREMENT_ENERGY: return "energy";
         case BTHOME_MEASUREMENT_POWER: return "power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "voltage";
-        case BTHOME_MEASUREMENT_DISTANCE: return "distance";
-        case BTHOME_MEASUREMENT_MOISTURE: return "moisture";
+        case BTHOME_MEASUREMENT_PM25:
+        case BTHOME_MEASUREMENT_PM25_2:
+             return "pm25";
+        case BTHOME_MEASUREMENT_PM10:
+        case BTHOME_MEASUREMENT_PM10_2:
+             return "pm10";
         case BTHOME_MEASUREMENT_CO2: return "carbon_dioxide";
         case BTHOME_MEASUREMENT_VOC: return "volatile_organic_compounds";
+        case BTHOME_MEASUREMENT_MOISTURE: return "moisture";
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE: return "humidity";
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE: return "temperature";
+        case BTHOME_MEASUREMENT_GAS: return "gas";
+        case BTHOME_MEASUREMENT_DISTANCE_MM: return "distance";
+        case BTHOME_MEASUREMENT_DISTANCE_M: return "distance";
+        case BTHOME_MEASUREMENT_DURATION: return "duration";
+        case BTHOME_MEASUREMENT_UV_INDEX: return "uv_index";
+        case BTHOME_MEASUREMENT_VOLUME_L: return "volume";
+        case BTHOME_MEASUREMENT_VOLUME_ML: return "volume";
+        case BTHOME_MEASUREMENT_VOLUME_FLOW_RATE: return "volume_flow_rate";
+
         default: return "";
     }
 }
@@ -522,14 +594,28 @@ std::string BTHomeDataTypeToStateClass(uint8_t type) {
         case BTHOME_MEASUREMENT_CO2:
         case BTHOME_MEASUREMENT_VOC:
         case BTHOME_MEASUREMENT_BATTERY:
-        case BTHOME_MEASUREMENT_DISTANCE:
         case BTHOME_MEASUREMENT_MOISTURE:
+        case BTHOME_MEASUREMENT_HUMIDITY_PRECISE:
+        case BTHOME_MEASUREMENT_TEMPERATURE_PRECISE:
+        case BTHOME_MEASUREMENT_GAS:
+        case BTHOME_MEASUREMENT_DISTANCE_MM:
+        case BTHOME_MEASUREMENT_DISTANCE_M:
+        case BTHOME_MEASUREMENT_DURATION:
+        case BTHOME_MEASUREMENT_UV_INDEX:
+        case BTHOME_MEASUREMENT_PM25:
+        case BTHOME_MEASUREMENT_PM10:
+        case BTHOME_MEASUREMENT_PM25_2:
+        case BTHOME_MEASUREMENT_PM10_2:
             return "measurement";
         case BTHOME_MEASUREMENT_COUNT_S:
         case BTHOME_MEASUREMENT_COUNT_M:
         case BTHOME_MEASUREMENT_COUNT_L:
         case BTHOME_MEASUREMENT_COUNT_LEGACY:
         case BTHOME_MEASUREMENT_ENERGY:
+        case BTHOME_MEASUREMENT_VOLUME_L:
+        case BTHOME_MEASUREMENT_VOLUME_ML:
+        case BTHOME_MEASUREMENT_VOLUME_FLOW_RATE:
+        case BTHOME_MEASUREMENT_VOLUME_FLOW:
             return "total_increasing";
         default:
             return "";
