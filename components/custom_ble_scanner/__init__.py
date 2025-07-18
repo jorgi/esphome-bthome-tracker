@@ -19,6 +19,7 @@ CONF_BLE_RAW_DATA_TEXT_SENSOR = "ble_raw_data_text_sensor"
 CONF_PRUNE_TIMEOUT = "prune_timeout"
 CONF_DISCOVERY_INTERVAL = "bthome_discovery_interval"
 CONF_ENABLE_GENERIC_SCANNER = "enable_generic_scanner"
+CONF_IGNORE_MAC_ADDRESSES = "ignore_mac_addresses" # NEW
 
 # Define the YAML configuration schema
 CONFIG_SCHEMA = cv.Schema(
@@ -31,6 +32,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_PRUNE_TIMEOUT, default="15min"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_DISCOVERY_INTERVAL, default="5min"): cv.positive_time_period_milliseconds,
         cv.Optional(CONF_ENABLE_GENERIC_SCANNER, default=True): cv.boolean,
+        cv.Optional(CONF_IGNORE_MAC_ADDRESSES): cv.All([cv.mac_address]), # NEW
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -50,3 +52,8 @@ async def to_code(config):
     if CONF_BLE_RAW_DATA_TEXT_SENSOR in config:
         text_sens = await cg.get_variable(config[CONF_BLE_RAW_DATA_TEXT_SENSOR])
         cg.add(var.set_ble_raw_data_text_sensor(text_sens))
+    
+    # NEW: Pass the list of MAC addresses to the C++ code
+    if CONF_IGNORE_MAC_ADDRESSES in config:
+        macs = [str(mac) for mac in config[CONF_IGNORE_MAC_ADDRESSES]]
+        cg.add(var.set_ignore_mac_addresses(macs))

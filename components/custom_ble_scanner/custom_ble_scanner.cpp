@@ -63,7 +63,6 @@ std::string format_vector_to_hex(const std::vector<uint8_t>& data) {
   return esphome::format_hex_pretty(data);
 }
 
-// Helper function to format seconds into a human-readable string
 std::string format_time_ago(uint32_t seconds) {
   if (seconds < 60) return std::to_string(seconds) + "s ago";
   if (seconds < 3600) return std::to_string(seconds / 60) + "m " + std::to_string(seconds % 60) + "s ago";
@@ -71,16 +70,12 @@ std::string format_time_ago(uint32_t seconds) {
   return std::to_string(seconds / 86400) + "d " + std::to_string((seconds % 86400) / 3600) + "h ago";
 }
 
-// Helper function to decode manufacturer data into a structured map
 std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id, const std::vector<uint8_t>& data) {
   std::map<std::string, std::string> decoded;
   switch (company_id) {
-    case 0x004C: { // Apple
+    case 0x004C: {
       decoded["manufacturer"] = "Apple";
-      if (data.size() < 2) {
-        decoded["type"] = "Too Short";
-        return decoded;
-      }
+      if (data.size() < 2) { decoded["type"] = "Too Short"; return decoded; }
       uint8_t type = data[0];
       switch (type) {
         case 0x02: decoded["type"] = "iPhone/iPad/Mac"; break;
@@ -94,18 +89,11 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
       }
       break;
     }
-    case 0x0075: { // Samsung
+    case 0x0075: {
       decoded["manufacturer"] = "Samsung";
-      if (data.size() < 1) {
-        decoded["type"] = "Too Short";
-        return decoded;
-      }
-      uint8_t type = data[0];
-      if (type == 0x54) {
-          decoded["type"] = "SmartThings";
-      } else {
-          decoded["type"] = "Unknown";
-      }
+      if (data.size() < 1) { decoded["type"] = "Too Short"; return decoded; }
+      if (data[0] == 0x54) { decoded["type"] = "SmartThings"; } 
+      else { decoded["type"] = "Unknown"; }
       break;
     }
   }
@@ -113,6 +101,23 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
 }
 
 // --- CustomBLEScanner Class Implementation ---
+
+// NEW: Helper function and setter for the ignore list
+uint64_t mac_address_to_uint64(const std::string &mac_str) {
+    uint64_t mac = 0;
+    const char *p = mac_str.c_str();
+    for (int i = 0; i < 6; i++) {
+        mac = (mac << 8) | (uint64_t)strtol(p, (char**)&p, 16);
+        if (i < 5) p++; // Skip the ':' or '-'
+    }
+    return mac;
+}
+
+void CustomBLEScanner::set_ignore_mac_addresses(const std::vector<std::string> &macs) {
+  for (const auto &mac_str : macs) {
+    this->ignore_mac_addresses_.insert(mac_address_to_uint64(mac_str));
+  }
+}
 
 void CustomBLEScanner::setup() {
   ESP_LOGD(TAG, "Setting up Custom BLE Scanner, RSSI threshold: %d dBm", this->rssi_threshold_);
@@ -124,26 +129,22 @@ void CustomBLEScanner::setup() {
 }
 
 void CustomBLEScanner::loop() {
-  if (millis() - this->last_prune_time_ > 300000) { // Prune every 5 minutes
+  if (millis() - this->last_prune_time_ > 300000) {
     this->last_prune_time_ = millis();
     this->prune_stale_devices();
   }
   
-  if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) {
-    return;
-  }
+  if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) return;
 
-  // Generic device data publishing (if enabled)
   if (this->generic_scanner_enabled_ && (millis() - this->last_generic_publish_time_ >= this->generic_publish_interval_ms_)) {
     this->last_generic_publish_time_ = millis();
     ESP_LOGD(TAG, "Publishing generic BLE device data to MQTT...");
     for (auto const& [mac_address_u64, device_info] : this->known_ble_devices_) {
-      std::string mac_address_str = mac_address_to_string(mac_address_u64);
       std::string mac_address_clean = mac_address_to_clean_string(mac_address_u64);
       std::string topic = "esphome/" + App.get_name() + "/ble/generic/" + mac_address_clean + "/state";
 
       JsonDocument doc;
-      doc["mac"] = mac_address_str;
+      doc["mac"] = mac_address_to_string(mac_address_u64);
       doc["name"] = device_info.name;
       doc["rssi"] = device_info.last_rssi;
       doc["last_seen_ago"] = format_time_ago((millis() - device_info.last_advertisement_time) / 1000);
@@ -162,7 +163,6 @@ void CustomBLEScanner::loop() {
     }
   }
 
-  // Periodically send BTHome discovery messages
   if (millis() - this->last_bthome_discovery_time_ >= this->bthome_discovery_interval_ms_) {
     this->last_bthome_discovery_time_ = millis();
     this->send_all_bthome_discovery_messages();
@@ -170,6 +170,12 @@ void CustomBLEScanner::loop() {
 }
 
 bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
+  // NEW: Check the global ignore list first.
+  if (this->ignore_mac_addresses_.count(device.address_uint64())) {
+    ESP_LOGV(TAG, "Device %s is on the ignore list, skipping.", device.address_str().c_str());
+    return false;
+  }
+  
   // Check for BTHome devices first
   for (const auto &service_data_entry : device.get_service_datas()) {
     if (service_data_entry.uuid == BTHOME_V2_SERVICE_UUID) {
@@ -178,14 +184,10 @@ bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device
     }
   }
 
-  // If not BTHome and generic scanner is disabled, stop here.
-  if (!this->generic_scanner_enabled_) {
-      return false;
-  }
+  if (!this->generic_scanner_enabled_) return false;
   
-  // Handle generic devices
   if (device.get_rssi() < this->rssi_threshold_) {
-    ESP_LOGV(TAG, "Generic device %s skipped due to low RSSI: %d dBm", device.address_str().c_str(), device.get_rssi());
+    ESP_LOGV(TAG, "Generic device %s skipped due to low RSSI.", device.address_str().c_str());
     return false;
   }
   
@@ -273,7 +275,7 @@ void CustomBLEScanner::send_all_bthome_discovery_messages() {
   if (mqtt::global_mqtt_client == nullptr || !mqtt::global_mqtt_client->is_connected()) return;
   ESP_LOGD(TAG, "Sending periodic BTHome discovery messages for %zu devices.", this->bthome_devices_.size());
   for (auto const& [mac_address_u64, device_obj] : this->bthome_devices_) {
-    if (millis() - device_obj->last_seen_millis_ < 600000) { // Only for devices seen in the last 10 mins
+    if (millis() - device_obj->last_seen_millis_ < 600000) {
       this->send_bthome_discovery_messages_for_device(device_obj);
     }
   }
@@ -291,7 +293,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   if (bthome_data_ptr == nullptr) return false;
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
-  if (bthome_data.size() < 2 || (bthome_data[0] & 0x01) != 0) return false; // Too short or encrypted
+  if (bthome_data.size() < 2 || (bthome_data[0] & 0x01) != 0) return false;
 
   uint64_t device_mac_u64 = device.address_uint64();
   BTHomeDevice *bthome_dev;
@@ -321,6 +323,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     uint8_t type = bthome_data[offset];
     offset++;
     float value = NAN;
+    bool parsed_successfully = true;
     
     #define PARSE_BTHOME_FIELD(TYPE, C_TYPE, SIZE, FACTOR, JSON_KEY) \
       case TYPE: { \
@@ -356,7 +359,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOC, uint16_t, 2, 1.0f, voc)
       case BTHOME_PACKET_ID: { offset += 1; break; }
       default: {
-        // MODIFIED: Added MAC address to the warning log
         ESP_LOGW(TAG, "Unknown BTHome v2 data type: 0x%02X for device %s", type, device.address_str().c_str());
         offset = bthome_data.size();
         break;
@@ -517,3 +519,4 @@ std::string BTHomeDataTypeToStateClass(uint8_t type) {
 
 } // namespace custom_ble_scanner
 } // namespace esphome
+}
