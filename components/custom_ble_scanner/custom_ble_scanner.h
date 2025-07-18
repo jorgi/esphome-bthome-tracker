@@ -46,8 +46,10 @@ enum BTHomeDataType {
   BTHOME_MEASUREMENT_ENERGY = 0x0A,
   BTHOME_MEASUREMENT_POWER = 0x0B,
   BTHOME_MEASUREMENT_VOLTAGE = 0x0C,
+  BTHOME_MEASUREMENT_DISTANCE = 0x10,      // RE-ADDED
   BTHOME_MEASUREMENT_CO2 = 0x12,
   BTHOME_MEASUREMENT_VOC = 0x13,
+  BTHOME_MEASUREMENT_COUNT_LEGACY = 0x15, // RE-ADDED
   BTHOME_MEASUREMENT_COUNT_M = 0x3D,
   BTHOME_MEASUREMENT_COUNT_L = 0x3E,
 };
@@ -94,7 +96,7 @@ struct BLEDeviceInfo {
   int last_rssi;
   std::string name;
   std::string manufacturer_data;
-  std::map<std::string, std::string> decoded_info; // UPDATED for structured data
+  std::map<std::string, std::string> decoded_info;
 };
 
 class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tracker::ESPBTDeviceListener {
@@ -114,7 +116,6 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   void set_rssi_threshold(int rssi) { rssi_threshold_ = rssi; }
   void set_generic_publish_interval(uint32_t interval_ms) { generic_publish_interval_ms_ = interval_ms; }
   void set_ble_raw_data_text_sensor(text_sensor::TextSensor *sensor) { ble_raw_data_sensor_ = sensor; }
-  // New setters for configurability
   void set_prune_timeout(uint32_t timeout) { prune_timeout_ = timeout; }
   void set_discovery_interval(uint32_t interval) { bthome_discovery_interval_ms_ = interval; }
   void set_generic_scanner_enabled(bool enabled) { generic_scanner_enabled_ = enabled; }
@@ -126,7 +127,6 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   uint32_t last_log_time_{0};
   uint32_t last_prune_time_{0};
   
-  // Configurable members
   bool generic_scanner_enabled_{true};
   uint32_t generic_publish_interval_ms_{60000};
   uint32_t prune_timeout_{900000};

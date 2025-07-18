@@ -150,7 +150,6 @@ void CustomBLEScanner::loop() {
       doc["manufacturer_data"] = device_info.manufacturer_data;
       
       if (!device_info.decoded_info.empty()) {
-          // FIX: Use modern syntax for creating a nested object
           JsonObject decoded_obj = doc["decoded_info"].to<JsonObject>();
           for (const auto& [key, value] : device_info.decoded_info) {
               decoded_obj[key] = value;
@@ -345,12 +344,14 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MASS_KG, uint16_t, 2, 0.01f, mass_kg)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MASS_LB, uint16_t, 2, 0.01f, mass_lb)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DEWPOINT, int16_t, 2, 0.01f, dewpoint)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_S, uint8_t, 1, 1.0f, count_s)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_M, uint16_t, 2, 1.0f, count_m)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_L, uint32_t, 4, 1.0f, count_l)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_S, uint8_t, 1, 1.0f, count)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_LEGACY, uint16_t, 2, 1.0f, count) // RE-ADDED
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_M, uint16_t, 2, 1.0f, count)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_COUNT_L, uint32_t, 4, 1.0f, count)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_ENERGY, uint32_t, 3, 0.001f, energy)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_POWER, int32_t, 3, 0.01f, power)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLTAGE, uint16_t, 2, 0.001f, voltage)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE, uint16_t, 2, 0.1f, distance) // RE-ADDED
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_CO2, uint16_t, 2, 1.0f, co2)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOC, uint16_t, 2, 1.0f, voc)
       case BTHOME_PACKET_ID: { offset += 1; break; }
@@ -375,7 +376,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
   }
   
-  // If it's a brand new device or has a new measurement type, send discovery now
   if (is_new_device || new_measurement_found) {
     this->send_bthome_discovery_messages_for_device(bthome_dev);
   }
@@ -429,11 +429,13 @@ std::string BTHomeDataTypeToString(uint8_t type) {
         case BTHOME_MEASUREMENT_MASS_LB: return "Mass Lb";
         case BTHOME_MEASUREMENT_DEWPOINT: return "Dewpoint";
         case BTHOME_MEASUREMENT_COUNT_S: return "Count";
-        case BTHOME_MEASUREMENT_COUNT_M: return "Count M";
-        case BTHOME_MEASUREMENT_COUNT_L: return "Count L";
+        case BTHOME_MEASUREMENT_COUNT_M: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_L: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_LEGACY: return "Count"; // RE-ADDED
         case BTHOME_MEASUREMENT_ENERGY: return "Energy";
         case BTHOME_MEASUREMENT_POWER: return "Power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "Voltage";
+        case BTHOME_MEASUREMENT_DISTANCE: return "Distance"; // RE-ADDED
         case BTHOME_MEASUREMENT_CO2: return "CO2";
         case BTHOME_MEASUREMENT_VOC: return "VOC";
         case BTHOME_PACKET_ID: return "Packet ID";
@@ -454,6 +456,7 @@ std::string BTHomeDataTypeToUnit(uint8_t type) {
         case BTHOME_MEASUREMENT_ENERGY: return "kWh";
         case BTHOME_MEASUREMENT_POWER: return "W";
         case BTHOME_MEASUREMENT_VOLTAGE: return "V";
+        case BTHOME_MEASUREMENT_DISTANCE: return "m"; // RE-ADDED
         case BTHOME_MEASUREMENT_CO2: return "ppm";
         case BTHOME_MEASUREMENT_VOC: return "µg/m³";
         default: return "";
@@ -473,6 +476,7 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
         case BTHOME_MEASUREMENT_ENERGY: return "energy";
         case BTHOME_MEASUREMENT_POWER: return "power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "voltage";
+        case BTHOME_MEASUREMENT_DISTANCE: return "distance"; // RE-ADDED
         case BTHOME_MEASUREMENT_CO2: return "carbon_dioxide";
         case BTHOME_MEASUREMENT_VOC: return "volatile_organic_compounds";
         default: return "";
@@ -497,8 +501,11 @@ std::string BTHomeDataTypeToStateClass(uint8_t type) {
         case BTHOME_MEASUREMENT_COUNT_S:
         case BTHOME_MEASUREMENT_COUNT_M:
         case BTHOME_MEASUREMENT_COUNT_L:
+        case BTHOME_MEASUREMENT_COUNT_LEGACY: // RE-ADDED
         case BTHOME_MEASUREMENT_ENERGY:
             return "total_increasing";
+        case BTHOME_MEASUREMENT_DISTANCE: // RE-ADDED
+            return "measurement";
         default:
             return "";
     }
