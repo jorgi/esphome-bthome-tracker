@@ -124,4 +124,28 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   void prune_stale_devices();
   esp32_ble_tracker::ESP32BLETracker *tracker_{nullptr};
   int rssi_threshold_{-100};
-  uint32_t last_log_time
+  uint32_t last_log_time_{0};
+  uint32_t last_prune_time_{0};
+  
+  bool generic_scanner_enabled_{true};
+  uint32_t generic_publish_interval_ms_{60000};
+  uint32_t prune_timeout_{900000};
+  uint32_t bthome_discovery_interval_ms_{300000};
+
+  std::map<uint64_t, BLEDeviceInfo> known_ble_devices_;
+  std::map<uint64_t, BTHomeDevice*> bthome_devices_;
+  std::set<uint64_t> ignore_mac_addresses_; // NEW
+  uint32_t last_generic_publish_time_{0};
+  uint32_t last_bthome_discovery_time_{0};
+
+  text_sensor::TextSensor *ble_raw_data_sensor_{nullptr};
+};
+
+// Declare helper functions
+std::string BTHomeDataTypeToString(uint8_t type);
+std::string BTHomeDataTypeToUnit(uint8_t type);
+std::string BTHomeDataTypeToDeviceClass(uint8_t type);
+std::string BTHomeDataTypeToStateClass(uint8_t type);
+
+} // namespace custom_ble_scanner
+} // namespace esphome
