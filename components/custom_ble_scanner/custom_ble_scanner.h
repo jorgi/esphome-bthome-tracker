@@ -6,7 +6,7 @@
 #include "esphome/components/mqtt/mqtt_client.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
-#include "esphome/core/application.hh"
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 #include <map>
 #include <vector>
