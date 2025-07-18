@@ -1,8 +1,8 @@
 // custom_components/custom_ble_scanner/custom_ble_scanner.cpp
 #include "custom_ble_scanner.h"
 #include "esphome/core/log.h"
-#include "esphome/core/helpers.h" 
-#include "esphome/core/application.h" 
+#include "esphome/core/helpers.h"
+#include "esphome/core/application.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/mqtt/mqtt_client.h"
 #include "esphome/components/json/json_util.h"
@@ -73,7 +73,7 @@ std::string format_time_ago(uint32_t seconds) {
 std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id, const std::vector<uint8_t>& data) {
   std::map<std::string, std::string> decoded;
   switch (company_id) {
-    case 0x004C: {
+    case 0x004C: { // Apple
       decoded["manufacturer"] = "Apple";
       if (data.size() < 2) { decoded["type"] = "Too Short"; return decoded; }
       uint8_t type = data[0];
@@ -89,10 +89,10 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
       }
       break;
     }
-    case 0x0075: {
+    case 0x0075: { // Samsung
       decoded["manufacturer"] = "Samsung";
       if (data.size() < 1) { decoded["type"] = "Too Short"; return decoded; }
-      if (data[0] == 0x54) { decoded["type"] = "SmartThings"; } 
+      if (data[0] == 0x54) { decoded["type"] = "SmartThings"; }
       else { decoded["type"] = "Unknown"; }
       break;
     }
@@ -103,7 +103,6 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
 // Implementation of BTHomeDevice's update function
 bool BTHomeDevice::update_ha_device_name(const std::string& new_name) {
   std::string lower_new_name = to_lower_string(new_name);
-  // Improved logic: update if the stored name is empty or if the new name is different
   if (!lower_new_name.empty() && lower_new_name != "nan" && (this->current_ha_name_.empty() || this->current_ha_name_ != new_name)) {
     ESP_LOGD("BTHomeDevice", "Updating HA device name for %s from '%s' to: '%s'",
              mac_address_to_string(this->address).c_str(), this->current_ha_name_.c_str(), new_name.c_str());
@@ -314,11 +313,13 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     ESP_LOGI(TAG, "First time seeing BTHome v2 device: %s.", device.address_str().c_str());
     bthome_dev = new BTHomeDevice(device.address());
     this->bthome_devices_[device_mac_u64] = bthome_dev;
+    // Set a temporary default name. It will be updated if a real name is advertised.
     bthome_dev->update_ha_device_name("BTHome " + mac_address_to_string(bthome_dev->address));
   } else {
     bthome_dev = it->second;
   }
 
+  // Always check for a name update and store if it changed.
   bool name_changed = false;
   std::string bthome_device_name = device.get_name();
   if (!bthome_device_name.empty()) {
@@ -364,14 +365,14 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_ENERGY, uint32_t, 3, 0.001f, energy)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_POWER, int32_t, 3, 0.01f, power)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLTAGE, uint16_t, 2, 0.001f, voltage)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE, uint16_t, 2, 0.1f, distance_m) // Using a different JSON key for clarity
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MOISTURE, uint16_t, 2, 0.01f, moisture) // Added moisture
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE, uint16_t, 2, 0.1f, distance_m)
+      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MOISTURE, uint16_t, 2, 0.01f, moisture)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_CO2, uint16_t, 2, 1.0f, co2)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOC, uint16_t, 2, 1.0f, voc)
       case BTHOME_PACKET_ID: { offset += 1; break; }
       default: {
         ESP_LOGW(TAG, "Unknown BTHome v2 data type: 0x%02X for device %s. Stopping parse for this packet.", type, device.address_str().c_str());
-        offset = bthome_data.size(); // Stop processing this packet to avoid further errors
+        offset = bthome_data.size();
         break;
       }
     }
@@ -379,6 +380,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     if (!std::isnan(value)) {
         if (bthome_dev->measurements.find(type) == bthome_dev->measurements.end()) {
             new_measurement_found = true;
+            ESP_LOGD(TAG, "Found new measurement type 0x%02X for device %s", type, device.address_str().c_str());
         }
         bthome_dev->measurements[type] = {
             .name = BTHomeDataTypeToString(type), .value = value, .unit = BTHomeDataTypeToUnit(type),
@@ -394,6 +396,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
   }
   
+  // Send discovery if it's a brand new device, if a new sensor type was found, or if the name changed.
   if (is_new_device || new_measurement_found || name_changed) {
     this->send_bthome_discovery_messages_for_device(bthome_dev);
   }
@@ -454,7 +457,7 @@ std::string BTHomeDataTypeToString(uint8_t type) {
         case BTHOME_MEASUREMENT_POWER: return "Power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "Voltage";
         case BTHOME_MEASUREMENT_DISTANCE: return "Distance";
-        case BTHOME_MEASUREMENT_MOISTURE: return "Moisture"; // Added
+        case BTHOME_MEASUREMENT_MOISTURE: return "Moisture";
         case BTHOME_MEASUREMENT_CO2: return "CO2";
         case BTHOME_MEASUREMENT_VOC: return "VOC";
         case BTHOME_PACKET_ID: return "Packet ID";
@@ -476,7 +479,7 @@ std::string BTHomeDataTypeToUnit(uint8_t type) {
         case BTHOME_MEASUREMENT_POWER: return "W";
         case BTHOME_MEASUREMENT_VOLTAGE: return "V";
         case BTHOME_MEASUREMENT_DISTANCE: return "m";
-        case BTHOME_MEASUREMENT_MOISTURE: return "%"; // Added
+        case BTHOME_MEASUREMENT_MOISTURE: return "%";
         case BTHOME_MEASUREMENT_CO2: return "ppm";
         case BTHOME_MEASUREMENT_VOC: return "µg/m³";
         default: return "";
@@ -497,7 +500,7 @@ std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
         case BTHOME_MEASUREMENT_POWER: return "power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "voltage";
         case BTHOME_MEASUREMENT_DISTANCE: return "distance";
-        case BTHOME_MEASUREMENT_MOISTURE: return "moisture"; // Added
+        case BTHOME_MEASUREMENT_MOISTURE: return "moisture";
         case BTHOME_MEASUREMENT_CO2: return "carbon_dioxide";
         case BTHOME_MEASUREMENT_VOC: return "volatile_organic_compounds";
         default: return "";
@@ -519,7 +522,7 @@ std::string BTHomeDataTypeToStateClass(uint8_t type) {
         case BTHOME_MEASUREMENT_VOC:
         case BTHOME_MEASUREMENT_BATTERY:
         case BTHOME_MEASUREMENT_DISTANCE:
-        case BTHOME_MEASUREMENT_MOISTURE: // Added
+        case BTHOME_MEASUREMENT_MOISTURE:
             return "measurement";
         case BTHOME_MEASUREMENT_COUNT_S:
         case BTHOME_MEASUREMENT_COUNT_M:
