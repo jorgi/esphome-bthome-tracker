@@ -519,4 +519,3 @@ std::string BTHomeDataTypeToStateClass(uint8_t type) {
 
 } // namespace custom_ble_scanner
 } // namespace esphome
-}
