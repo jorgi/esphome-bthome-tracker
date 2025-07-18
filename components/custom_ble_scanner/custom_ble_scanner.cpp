@@ -100,9 +100,20 @@ std::map<std::string, std::string> decode_manufacturer_data(uint16_t company_id,
   return decoded;
 }
 
+// Implementation of BTHomeDevice's update function
+bool BTHomeDevice::update_ha_device_name(const std::string& new_name) {
+  std::string lower_new_name = to_lower_string(new_name);
+  if (!lower_new_name.empty() && lower_new_name != "nan" && this->current_ha_name_ != new_name) {
+    ESP_LOGD("BTHomeDevice", "Updating HA device name for %s from '%s' to: '%s'",
+             mac_address_to_string(this->address).c_str(), this->current_ha_name_.c_str(), new_name.c_str());
+    this->current_ha_name_ = new_name;
+    return true; // Return true because the name was changed
+  }
+  return false; // Return false if the name was not changed
+}
+
 // --- CustomBLEScanner Class Implementation ---
 
-// NEW: Helper function and setter for the ignore list
 uint64_t mac_address_to_uint64(const std::string &mac_str) {
     uint64_t mac = 0;
     const char *p = mac_str.c_str();
@@ -170,13 +181,11 @@ void CustomBLEScanner::loop() {
 }
 
 bool CustomBLEScanner::parse_device(const esp32_ble_tracker::ESPBTDevice &device) {
-  // NEW: Check the global ignore list first.
   if (this->ignore_mac_addresses_.count(device.address_uint64())) {
     ESP_LOGV(TAG, "Device %s is on the ignore list, skipping.", device.address_str().c_str());
     return false;
   }
   
-  // Check for BTHome devices first
   for (const auto &service_data_entry : device.get_service_datas()) {
     if (service_data_entry.uuid == BTHOME_V2_SERVICE_UUID) {
       ESP_LOGD(TAG, "Found BTHome v2 device %s! Processing data...", device.address_str().c_str());
@@ -309,9 +318,10 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     bthome_dev = it->second;
   }
 
+  bool name_changed = false;
   std::string bthome_device_name = device.get_name();
   if (!bthome_device_name.empty()) {
-      bthome_dev->update_ha_device_name(bthome_device_name);
+      name_changed = bthome_dev->update_ha_device_name(bthome_device_name);
   }
   bthome_dev->last_seen_millis_ = millis();
 
@@ -323,7 +333,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     uint8_t type = bthome_data[offset];
     offset++;
     float value = NAN;
-    bool parsed_successfully = true;
     
     #define PARSE_BTHOME_FIELD(TYPE, C_TYPE, SIZE, FACTOR, JSON_KEY) \
       case TYPE: { \
@@ -383,7 +392,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
   }
   
-  if (is_new_device || new_measurement_found) {
+  if (is_new_device || new_measurement_found || name_changed) {
     this->send_bthome_discovery_messages_for_device(bthome_dev);
   }
 

@@ -79,14 +79,8 @@ class BTHomeDevice {
     return this->current_ha_name_;
   }
 
-  void update_ha_device_name(const std::string& new_name) {
-    std::string lower_new_name = to_lower_string(new_name);
-    if (!lower_new_name.empty() && lower_new_name != "nan" && this->current_ha_name_ != new_name) {
-      this->current_ha_name_ = new_name;
-      ESP_LOGD("BTHomeDevice", "Updated HA device name for %s to: '%s'",
-               mac_address_to_string(this->address).c_str(), new_name.c_str());
-    }
-  }
+  // Declaration of the function, now returns bool
+  bool update_ha_device_name(const std::string& new_name);
 };
 
 
@@ -118,7 +112,7 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   void set_prune_timeout(uint32_t timeout) { prune_timeout_ = timeout; }
   void set_discovery_interval(uint32_t interval) { bthome_discovery_interval_ms_ = interval; }
   void set_generic_scanner_enabled(bool enabled) { generic_scanner_enabled_ = enabled; }
-  void set_ignore_mac_addresses(const std::vector<std::string> &macs); // NEW
+  void set_ignore_mac_addresses(const std::vector<std::string> &macs);
 
  protected:
   void prune_stale_devices();
@@ -134,7 +128,7 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
 
   std::map<uint64_t, BLEDeviceInfo> known_ble_devices_;
   std::map<uint64_t, BTHomeDevice*> bthome_devices_;
-  std::set<uint64_t> ignore_mac_addresses_; // NEW
+  std::set<uint64_t> ignore_mac_addresses_;
   uint32_t last_generic_publish_time_{0};
   uint32_t last_bthome_discovery_time_{0};
 
