@@ -2,7 +2,6 @@
 #pragma once
 
 #include "esphome/components/esp32_ble_tracker/esp32_ble_tracker.h"
-#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/mqtt/mqtt_client.h"
 #include "esphome/core/component.h"
@@ -32,7 +31,7 @@ std::string mac_address_to_clean_string(const uint8_t* mac_array);
 
 const esp32_ble_tracker::ESPBTUUID BTHOME_V2_SERVICE_UUID = esp32_ble_tracker::ESPBTUUID::from_uint16(0xFCD2);
 
-// BTHome Data Types from bthome.io/format/
+// BTHome Data Types
 enum BTHomeDataType {
   BTHOME_PACKET_ID = 0x00,
   BTHOME_MEASUREMENT_BATTERY = 0x01,
@@ -67,7 +66,6 @@ class BTHomeDevice {
  public:
   uint8_t address[6];
   std::map<uint8_t, BTHomeMeasurement> measurements;
-
   std::string current_ha_name_;
   uint32_t last_seen_millis_;
 
@@ -96,7 +94,7 @@ struct BLEDeviceInfo {
   int last_rssi;
   std::string name;
   std::string manufacturer_data;
-  std::string decoded_data;
+  std::map<std::string, std::string> decoded_info; // UPDATED for structured data
 };
 
 class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tracker::ESPBTDeviceListener {
@@ -113,24 +111,31 @@ class CustomBLEScanner : public esphome::Component, public esphome::esp32_ble_tr
   bool parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevice &device);
 
   void set_esp32_ble_tracker(esp32_ble_tracker::ESP32BLETracker *tracker) { tracker_ = tracker; }
-  void set_rssi_threshold(int rssi);
+  void set_rssi_threshold(int rssi) { rssi_threshold_ = rssi; }
   void set_generic_publish_interval(uint32_t interval_ms) { generic_publish_interval_ms_ = interval_ms; }
   void set_ble_raw_data_text_sensor(text_sensor::TextSensor *sensor) { ble_raw_data_sensor_ = sensor; }
+  // New setters for configurability
+  void set_prune_timeout(uint32_t timeout) { prune_timeout_ = timeout; }
+  void set_discovery_interval(uint32_t interval) { bthome_discovery_interval_ms_ = interval; }
+  void set_generic_scanner_enabled(bool enabled) { generic_scanner_enabled_ = enabled; }
 
  protected:
   void prune_stale_devices();
   esp32_ble_tracker::ESP32BLETracker *tracker_{nullptr};
   int rssi_threshold_{-100};
   uint32_t last_log_time_{0};
-  uint32_t generic_publish_interval_ms_{60000};
-  uint32_t last_generic_publish_time_{0};
   uint32_t last_prune_time_{0};
+  
+  // Configurable members
+  bool generic_scanner_enabled_{true};
+  uint32_t generic_publish_interval_ms_{60000};
+  uint32_t prune_timeout_{900000};
+  uint32_t bthome_discovery_interval_ms_{300000};
 
   std::map<uint64_t, BLEDeviceInfo> known_ble_devices_;
-
   std::map<uint64_t, BTHomeDevice*> bthome_devices_;
-  uint32_t last_bthome_discovery_time_ = 0;
-  const uint32_t BTHOME_DISCOVERY_INTERVAL_MS = 300000; // 5 minutes
+  uint32_t last_generic_publish_time_{0};
+  uint32_t last_bthome_discovery_time_{0};
 
   text_sensor::TextSensor *ble_raw_data_sensor_{nullptr};
 };
@@ -140,7 +145,6 @@ std::string BTHomeDataTypeToString(uint8_t type);
 std::string BTHomeDataTypeToUnit(uint8_t type);
 std::string BTHomeDataTypeToDeviceClass(uint8_t type);
 std::string BTHomeDataTypeToStateClass(uint8_t type);
-
 
 } // namespace custom_ble_scanner
 } // namespace esphome
