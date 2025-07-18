@@ -290,6 +290,8 @@ void CustomBLEScanner::send_all_bthome_discovery_messages() {
   }
 }
 
+// custom_components/custom_ble_scanner/custom_ble_scanner.cpp
+
 bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevice &device) {
   const std::vector<uint8_t>* bthome_data_ptr = nullptr;
   for (const auto &entry : device.get_service_datas()) {
@@ -302,6 +304,9 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
   if (bthome_data_ptr == nullptr) return false;
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
+  // New line to log the raw data for debugging
+  ESP_LOGD(TAG, "Parsing BTHome data for %s: %s", device.address_str().c_str(), format_vector_to_hex(bthome_data).c_str());
+
   if (bthome_data.size() < 2 || (bthome_data[0] & 0x01) != 0) return false;
 
   uint64_t device_mac_u64 = device.address_uint64();
@@ -313,13 +318,11 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     ESP_LOGI(TAG, "First time seeing BTHome v2 device: %s.", device.address_str().c_str());
     bthome_dev = new BTHomeDevice(device.address());
     this->bthome_devices_[device_mac_u64] = bthome_dev;
-    // Set a temporary default name. It will be updated if a real name is advertised.
     bthome_dev->update_ha_device_name("BTHome " + mac_address_to_string(bthome_dev->address));
   } else {
     bthome_dev = it->second;
   }
 
-  // Always check for a name update and store if it changed.
   bool name_changed = false;
   std::string bthome_device_name = device.get_name();
   if (!bthome_device_name.empty()) {
@@ -366,7 +369,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_POWER, int32_t, 3, 0.01f, power)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOLTAGE, uint16_t, 2, 0.001f, voltage)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_DISTANCE, uint16_t, 2, 0.1f, distance_m)
-      PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_MOISTURE, uint16_t, 2, 0.01f, moisture)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_CO2, uint16_t, 2, 1.0f, co2)
       PARSE_BTHOME_FIELD(BTHOME_MEASUREMENT_VOC, uint16_t, 2, 1.0f, voc)
       case BTHOME_PACKET_ID: { offset += 1; break; }
@@ -396,7 +398,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     mqtt::global_mqtt_client->publish(state_topic, state_payload.c_str(), state_payload.length(), 0, false);
   }
   
-  // Send discovery if it's a brand new device, if a new sensor type was found, or if the name changed.
   if (is_new_device || new_measurement_found || name_changed) {
     this->send_bthome_discovery_messages_for_device(bthome_dev);
   }
