@@ -109,7 +109,7 @@ std::string decode_manufacturer_data(uint16_t company_id, const std::vector<uint
       return "Samsung (Unknown Type)";
     }
     default:
-      return ""; // No specific decoder available
+      return "";
   }
   return "";
 }
@@ -298,10 +298,10 @@ void CustomBLEScanner::send_bthome_discovery_messages_for_device(BTHomeDevice *d
         ESP_LOGD(TAG, "Sent %s discovery for %s (HA Device ID: %s)", sensor_type.c_str(), mac_address_to_string(device_obj->address).c_str(), ha_device_identifier.c_str());
     };
 
-    send_sensor_discovery("Temperature", "°C", "temperature", "measurement");
-    send_sensor_discovery("Humidity", "%", "humidity", "measurement");
-    send_sensor_discovery("Battery", "%", "battery", "measurement");
-    send_sensor_discovery("Voltage", "V", "voltage", "measurement");
+    // UPDATED: Dynamically send discovery only for available sensors
+    for (const auto& [type_id, measurement] : device_obj->measurements) {
+        send_sensor_discovery(measurement.name, measurement.unit, measurement.device_class, measurement.state_class);
+    }
 }
 
 void CustomBLEScanner::send_all_bthome_discovery_messages() {
@@ -326,7 +326,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     return false;
   }
 
-  // FIX: The pointer must be to the vector of bytes, not the ServiceData struct
   const std::vector<uint8_t>* bthome_data_ptr = nullptr;
   for (const auto &entry : device.get_service_datas()) {
     if (entry.uuid == BTHOME_V2_SERVICE_UUID) {
@@ -339,7 +338,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     ESP_LOGW(TAG, "BTHome v2 device %s missing FCD2 service data key after initial check! This should not happen.", device.address_str().c_str());
     return false;
   }
-  // This line now works correctly because the pointer type is correct
   const std::vector<uint8_t>& bthome_data = *bthome_data_ptr;
 
   if (bthome_data.size() < 2) {
@@ -392,7 +390,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_MEASUREMENT_TEMPERATURE: {
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         value = (int16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Temperature: %.2f °C", value);
         state_doc["temperature"] = round(value * 100) / 100.0;
         offset += 2;
         break;
@@ -400,7 +397,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_MEASUREMENT_HUMIDITY: {
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         value = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.01f;
-        ESP_LOGD(TAG, "  BTHome Humidity: %.2f %%", value);
         state_doc["humidity"] = round(value * 100) / 100.0;
         offset += 2;
         break;
@@ -408,7 +404,6 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_MEASUREMENT_BATTERY: {
         if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break;}
         value = (float)bthome_data[offset];
-        ESP_LOGD(TAG, "  BTHome Battery: %.0f %%", value);
         state_doc["battery"] = (int)value;
         offset += 1;
         break;
@@ -416,8 +411,91 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
       case BTHOME_MEASUREMENT_VOLTAGE: {
         if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break;}
         value = (uint16_t) (bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.001f;
-        ESP_LOGD(TAG, "  BTHome Voltage: %.3f V", value);
         state_doc["voltage"] = round(value * 1000) / 1000.0;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_PRESSURE: {
+        if (offset + 3 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8) | (bthome_data[offset+2] << 16)) * 0.01f;
+        state_doc["pressure"] = round(value * 100) / 100.0;
+        offset += 3;
+        break;
+      }
+      case BTHOME_MEASUREMENT_ILLUMINANCE: {
+        if (offset + 3 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8) | (bthome_data[offset+2] << 16)) * 0.01f;
+        state_doc["illuminance"] = round(value * 100) / 100.0;
+        offset += 3;
+        break;
+      }
+      case BTHOME_MEASUREMENT_MASS_KG: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.01f;
+        state_doc["mass_kg"] = round(value * 100) / 100.0;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_MASS_LB: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.01f;
+        state_doc["mass_lb"] = round(value * 100) / 100.0;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_DEWPOINT: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (int16_t)(bthome_data[offset] | (bthome_data[offset+1] << 8)) * 0.01f;
+        state_doc["dewpoint"] = round(value * 100) / 100.0;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_COUNT_S: {
+        if (offset + 1 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)bthome_data[offset];
+        state_doc["count_s"] = (int)value;
+        offset += 1;
+        break;
+      }
+      case BTHOME_MEASUREMENT_COUNT_M: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8));
+        state_doc["count_m"] = (int)value;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_COUNT_L: {
+        if (offset + 4 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8) | (bthome_data[offset+2] << 16) | (bthome_data[offset+3] << 24));
+        state_doc["count_l"] = (int)value;
+        offset += 4;
+        break;
+      }
+      case BTHOME_MEASUREMENT_ENERGY: {
+        if (offset + 3 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8) | (bthome_data[offset+2] << 16)) * 0.001f;
+        state_doc["energy"] = round(value * 1000) / 1000.0;
+        offset += 3;
+        break;
+      }
+      case BTHOME_MEASUREMENT_POWER: {
+        if (offset + 3 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8) | (bthome_data[offset+2] << 16)) * 0.01f;
+        state_doc["power"] = round(value * 100) / 100.0;
+        offset += 3;
+        break;
+      }
+      case BTHOME_MEASUREMENT_CO2: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8));
+        state_doc["co2"] = (int)value;
+        offset += 2;
+        break;
+      }
+      case BTHOME_MEASUREMENT_VOC: {
+        if (offset + 2 > bthome_data.size()) { parsed_successfully = false; break; }
+        value = (float)(bthome_data[offset] | (bthome_data[offset+1] << 8));
+        state_doc["voc"] = (int)value;
         offset += 2;
         break;
       }
@@ -431,7 +509,7 @@ bool CustomBLEScanner::parse_bthome_v2_device(const esp32_ble_tracker::ESPBTDevi
     }
     if (parsed_successfully && !std::isnan(value)) {
         bthome_dev->measurements[type] = {
-            .name = to_lower_string(BTHomeDataTypeToString(type)),
+            .name = BTHomeDataTypeToString(type),
             .value = value,
             .unit = BTHomeDataTypeToUnit(type),
             .device_class = BTHomeDataTypeToDeviceClass(type),
@@ -508,10 +586,22 @@ void CustomBLEScanner::set_rssi_threshold(int rssi) {
 // --- Helper functions for BTHomeMeasurement (definitions) ---
 std::string BTHomeDataTypeToString(uint8_t type) {
     switch (type) {
+        case BTHOME_MEASUREMENT_BATTERY: return "Battery";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "Temperature";
         case BTHOME_MEASUREMENT_HUMIDITY: return "Humidity";
-        case BTHOME_MEASUREMENT_BATTERY: return "Battery";
+        case BTHOME_MEASUREMENT_PRESSURE: return "Pressure";
+        case BTHOME_MEASUREMENT_ILLUMINANCE: return "Illuminance";
+        case BTHOME_MEASUREMENT_MASS_KG: return "Mass";
+        case BTHOME_MEASUREMENT_MASS_LB: return "Mass";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "Dewpoint";
+        case BTHOME_MEASUREMENT_COUNT_S: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_M: return "Count";
+        case BTHOME_MEASUREMENT_COUNT_L: return "Count";
+        case BTHOME_MEASUREMENT_ENERGY: return "Energy";
+        case BTHOME_MEASUREMENT_POWER: return "Power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "Voltage";
+        case BTHOME_MEASUREMENT_CO2: return "CO2";
+        case BTHOME_MEASUREMENT_VOC: return "VOC";
         case BTHOME_PACKET_ID: return "Packet ID";
         default: return "Unknown";
     }
@@ -519,30 +609,60 @@ std::string BTHomeDataTypeToString(uint8_t type) {
 
 std::string BTHomeDataTypeToUnit(uint8_t type) {
     switch (type) {
+        case BTHOME_MEASUREMENT_BATTERY: return "%";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "°C";
         case BTHOME_MEASUREMENT_HUMIDITY: return "%";
-        case BTHOME_MEASUREMENT_BATTERY: return "%";
+        case BTHOME_MEASUREMENT_PRESSURE: return "hPa";
+        case BTHOME_MEASUREMENT_ILLUMINANCE: return "lx";
+        case BTHOME_MEASUREMENT_MASS_KG: return "kg";
+        case BTHOME_MEASUREMENT_MASS_LB: return "lb";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "°C";
+        case BTHOME_MEASUREMENT_ENERGY: return "kWh";
+        case BTHOME_MEASUREMENT_POWER: return "W";
         case BTHOME_MEASUREMENT_VOLTAGE: return "V";
+        case BTHOME_MEASUREMENT_CO2: return "ppm";
+        case BTHOME_MEASUREMENT_VOC: return "µg/m³";
         default: return "";
     }
 }
 
 std::string BTHomeDataTypeToDeviceClass(uint8_t type) {
     switch (type) {
+        case BTHOME_MEASUREMENT_BATTERY: return "battery";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "temperature";
         case BTHOME_MEASUREMENT_HUMIDITY: return "humidity";
-        case BTHOME_MEASUREMENT_BATTERY: return "battery";
+        case BTHOME_MEASUREMENT_PRESSURE: return "pressure";
+        case BTHOME_MEASUREMENT_ILLUMINANCE: return "illuminance";
+        case BTHOME_MEASUREMENT_MASS_KG: return "weight";
+        case BTHOME_MEASUREMENT_MASS_LB: return "weight";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "temperature";
+        case BTHOME_MEASUREMENT_ENERGY: return "energy";
+        case BTHOME_MEASUREMENT_POWER: return "power";
         case BTHOME_MEASUREMENT_VOLTAGE: return "voltage";
+        case BTHOME_MEASUREMENT_CO2: return "carbon_dioxide";
+        case BTHOME_MEASUREMENT_VOC: return "volatile_organic_compounds";
         default: return "";
     }
 }
 
 std::string BTHomeDataTypeToStateClass(uint8_t type) {
     switch (type) {
+        case BTHOME_MEASUREMENT_BATTERY: return "measurement";
         case BTHOME_MEASUREMENT_TEMPERATURE: return "measurement";
         case BTHOME_MEASUREMENT_HUMIDITY: return "measurement";
-        case BTHOME_MEASUREMENT_BATTERY: return "measurement";
+        case BTHOME_MEASUREMENT_PRESSURE: return "measurement";
+        case BTHOME_MEASUREMENT_ILLUMINANCE: return "measurement";
+        case BTHOME_MEASUREMENT_MASS_KG: return "measurement";
+        case BTHOME_MEASUREMENT_MASS_LB: return "measurement";
+        case BTHOME_MEASUREMENT_DEWPOINT: return "measurement";
+        case BTHOME_MEASUREMENT_COUNT_S: return "total_increasing";
+        case BTHOME_MEASUREMENT_COUNT_M: return "total_increasing";
+        case BTHOME_MEASUREMENT_COUNT_L: return "total_increasing";
+        case BTHOME_MEASUREMENT_ENERGY: return "total_increasing";
+        case BTHOME_MEASUREMENT_POWER: return "measurement";
         case BTHOME_MEASUREMENT_VOLTAGE: return "measurement";
+        case BTHOME_MEASUREMENT_CO2: return "measurement";
+        case BTHOME_MEASUREMENT_VOC: return "measurement";
         default: return "";
     }
 }
